@@ -1,0 +1,4 @@
+	projectID := "ic-pcg2-d-workload"
+	region := "europe-west3"
+	clusterID := "gwd-pcg2-d-euw3"
+

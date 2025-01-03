@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  serviceAccountName: kafka-test-2
+  containers:
+  - name: nginx
+    image: europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/test-kafka-auth
+    ports:
+    - containerPort: 80
+    env:
+      - name: GCP_PROJECT
+        value: ic-pcg2-d-workload
+      - name: GCP_REGION
+        value: europe-west3
+      - name: GCP_CLUSTER_ID
+        value: gwd-pcg2-d-euw3

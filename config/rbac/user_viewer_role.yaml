@@ -1,0 +1,23 @@
+# permissions for end users to view users.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: gcp-kafka-auth-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: user-viewer-role
+rules:
+- apiGroups:
+  - gcp-kafka.k8s.onpier.de
+  resources:
+  - users
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - gcp-kafka.k8s.onpier.de
+  resources:
+  - users/status
+  verbs:
+  - get

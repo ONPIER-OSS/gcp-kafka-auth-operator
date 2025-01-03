@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- gcp-kafka_v1alpha1_user.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

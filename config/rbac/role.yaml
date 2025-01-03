@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - gcp-kafka.k8s.onpier.de
+  resources:
+  - users
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gcp-kafka.k8s.onpier.de
+  resources:
+  - users/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gcp-kafka.k8s.onpier.de
+  resources:
+  - users/status
+  verbs:
+  - get
+  - patch
+  - update

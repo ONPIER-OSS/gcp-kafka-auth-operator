@@ -1,0 +1,9 @@
+FROM golang:latest as builder
+WORKDIR /workdir
+COPY . .
+RUN go build -o test
+
+FROM ubuntu
+RUN apt-get update -y && apt-get install -y ca-certificates
+COPY --from=builder /workdir/test /test
+CMD ["/test"]
