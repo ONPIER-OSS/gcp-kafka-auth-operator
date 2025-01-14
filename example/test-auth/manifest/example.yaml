@@ -27,6 +27,9 @@ spec:
 apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
 kind: User
 metadata:
-  name: user-test
+  name: nr-last
 spec:
   serviceAccountName: kafka-test
+  topicAccess:
+    - topic: lead-update-routing-event-retry
+      role: readWrite

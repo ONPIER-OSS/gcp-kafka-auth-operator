@@ -39,21 +39,33 @@ spec:
           spec:
             description: UserSpec defines the desired state of User.
             properties:
-              foo:
-                description: Foo is an example field of User. Edit user_types.go to
-                  remove/update
+              clusterAccess:
+                description: ReadOnly or ReadWrite access to the whole cluster
                 type: string
               serviceAccountName:
-                description: |-
-                  INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                  A ServiceAccount that should be annotation and used for auth
                 type: string
+              topicAccess:
+                items:
+                  properties:
+                    role:
+                      type: string
+                    topic:
+                      type: string
+                  required:
+                  - role
+                  - topic
+                  type: object
+                type: array
             required:
             - serviceAccountName
             type: object
           status:
             description: UserStatus defines the observed state of User.
+            properties:
+              ready:
+                type: boolean
+            required:
+            - ready
             type: object
         type: object
     served: true

@@ -5,6 +5,14 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - list
+  - update
+  - watch
+- apiGroups:
   - gcp-kafka.k8s.onpier.de
   resources:
   - users

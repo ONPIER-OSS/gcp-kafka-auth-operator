@@ -58,6 +58,9 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var projectID string
+	var readWriteRole string
+	var readOnlyRole string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -69,6 +72,9 @@ func main() {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&projectID, "gcp-project-id", "0", "The ID of the google project.")
+	flag.StringVar(&readWriteRole, "read-write-role", "roles/managedkafka.client", "ID of the role for read write access.")
+	flag.StringVar(&readOnlyRole, "read-only-role", "roles/managedkafka.viewer", "ID of the role for read only access.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -145,6 +151,11 @@ func main() {
 	if err = (&controller.UserReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
+		Opts: &controller.UserReconcilerOpts{
+			GoogleProject: projectID,
+			ReadOnlyRole:  readOnlyRole,
+			ReadWriteRole: readWriteRole,
+		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "User")
 		os.Exit(1)

@@ -63,6 +63,7 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
+          - --gcp-project-id=ic-pcg2-d-workload
         image: europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/operator-test
         name: manager
         securityContext:
