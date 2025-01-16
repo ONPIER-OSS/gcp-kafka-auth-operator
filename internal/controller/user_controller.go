@@ -282,6 +282,9 @@ func addKafkaIAMBinding(
 	// Get the current IAM policy.
 	getRequest := &iampb.GetIamPolicyRequest{
 		Resource: "projects/" + projectID,
+		Options: &iampb.GetPolicyOptions{
+			RequestedPolicyVersion: 3,
+		}, 
 	}
 
 	policy, err := client.GetIamPolicy(ctx, getRequest)
@@ -289,7 +292,6 @@ func addKafkaIAMBinding(
 		log.Error(err, "Failed to get IAM policy")
 		return err
 	}
-	policy.Version = 3
 
 	// Remove all the roles to ensure the changed roles
 	i := 0 // output index
@@ -391,122 +393,7 @@ func addKafkaIAMBinding(
 	return nil
 }
 
-// createServiceAccount creates a service account.
-func CreateServiceAccounta(ctx context.Context, userCR *gcpkafkav1alpha1.User, projectID, roleName string) (string, error) {
-	log := log.FromContext(ctx)
-	service, err := iam.NewService(ctx)
-	gcpSAName := fmt.Sprintf("%s-%s", userCR.GetNamespace(), userCR.GetName())
-	gcpSAName = stringSanitize(gcpSAName, 30)
-
-	log.Info("Creating a Service Account")
-	if err != nil {
-		return "", fmt.Errorf("iam.NewService: %w", err)
-	}
-	// Create SA
-	request := &iam.CreateServiceAccountRequest{
-		AccountId: gcpSAName,
-		ServiceAccount: &iam.ServiceAccount{
-			DisplayName: gcpSAName,
-			Description: "Managed by the kafka user operator",
-		},
-	}
-
-	acc, err := service.Projects.ServiceAccounts.Create("projects/"+projectID, request).Do()
-	if err != nil {
-		log.Info(fmt.Sprintf("lala %v", acc))
-		if err, ok := err.(*googleapi.Error); ok {
-			log.Info(err.Message)
-			// If already exists
-			// https://cloud.google.com/pubsub/docs/reference/error-codes
-			if err.Code == 409 {
-				log.Info("Service Account already exists, re-using")
-			}
-		} else {
-			return "", fmt.Errorf("Projects.ServiceAccounts.Create: %w", err)
-		}
-	}
-	var sa *iam.ServiceAccount
-	// Get SA
-	for i := 0; i < 10; i++ {
-		saName := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", gcpSAName, projectID)
-		log.Info("trying to get SA", "try", i, "email", saName)
-		sa, err = service.Projects.ServiceAccounts.Get(fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, saName)).Do()
-		if err != nil {
-			log.Error(err, "Can't get a service account")
-		} else {
-			break
-		}
-		time.Sleep(time.Second * 15)
-	}
-
-	if sa == nil {
-		err := errors.New("service account is not found")
-		log.Error(err, "couldn't find a service account", "name", gcpSAName)
-	}
-	log.Info(fmt.Sprintf("%v", sa))
-	// Assign kafka policies to the SA
-
-	req3 := &iam.SetIamPolicyRequest{
-		Policy: &iam.Policy{
-			Bindings: []*iam.Binding{
-				{
-					Members: []string{
-						fmt.Sprintf("serviceAccount:%s.svc.id.goog[%s/%s]", projectID, userCR.GetNamespace(), userCR.Spec.ServiceAccountName),
-					},
-					Role: "roles/iam.workloadIdentityUser",
-				},
-			},
-		},
-	}
-	_, err = service.Projects.ServiceAccounts.SetIamPolicy(sa.Name, req3).Do()
-
-	if err != nil {
-		return "", fmt.Errorf("Projects.ServiceAccounts.SetIamPolicy: %w", err)
-	}
-
-	client, err := resourcemanager.NewProjectsClient(ctx)
-	if err != nil {
-		fmt.Printf("Failed to create client: %v\n", err)
-		return "", err
-	}
-	defer client.Close()
-
-	// Get the current IAM policy.
-	req := &iampb.GetIamPolicyRequest{
-		Resource: "projects/" + projectID,
-	}
-	policy, err := client.GetIamPolicy(ctx, req)
-	if err != nil {
-		fmt.Printf("Failed to get IAM policy: %v\n", err)
-		return "", err
-	}
-
-	log.Info(fmt.Sprintf("%v", policy))
-
-	newBinding := &iampb.Binding{
-		Role: roleName,
-		Members: []string{
-			fmt.Sprintf("serviceAccount:%s", sa.Email),
-		},
-	}
-	policy.Bindings = append(policy.Bindings, newBinding)
-
-	// Set the updated IAM policy.
-	setReq := &iampb.SetIamPolicyRequest{
-		Resource: "projects/" + projectID,
-		Policy:   policy,
-	}
-	updPol, err := client.SetIamPolicy(ctx, setReq)
-	if err != nil {
-		fmt.Printf("Failed to set IAM policy: %v\n", err)
-		return "", nil
-	}
-
-	log.Info(fmt.Sprintf("%v", updPol))
-
-	return sa.Email, nil
-}
-
+// TODO: Move to another package and add unit tests
 // StringSanitize sanitizes and truncates a string to a fixed length using a hash function.
 // useful for restricting the length and content of user supplied database identifiers.
 func stringSanitize(s string, limit int) string {
