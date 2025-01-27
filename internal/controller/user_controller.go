@@ -284,7 +284,7 @@ func addKafkaIAMBinding(
 		Resource: "projects/" + projectID,
 		Options: &iampb.GetPolicyOptions{
 			RequestedPolicyVersion: 3,
-		}, 
+		},
 	}
 
 	policy, err := client.GetIamPolicy(ctx, getRequest)
