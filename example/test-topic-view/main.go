@@ -45,7 +45,7 @@ func main() {
 		log.Fatalf("Failed to assign partitions: %v", err)
 	}
 
-	log.Println("Waiting for the first message...")
+	log.Printf("Waiting for the first message...\n")
 
 	for {
 		msg, err := consumer.ReadMessage(-1)
