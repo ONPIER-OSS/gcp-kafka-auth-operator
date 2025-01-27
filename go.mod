@@ -3,12 +3,12 @@ module github.com/ONPIER-playground/gcp-kafka-auth-operator
 go 1.22.0
 
 require (
-	cloud.google.com/go/cloudtasks v1.13.2
 	cloud.google.com/go/iam v1.2.2
 	cloud.google.com/go/resourcemanager v1.10.3
 	github.com/onsi/ginkgo/v2 v2.19.0
 	github.com/onsi/gomega v1.33.1
 	google.golang.org/api v0.214.0
+	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697
 	k8s.io/api v0.31.0
 	k8s.io/apimachinery v0.31.0
 	k8s.io/client-go v0.31.0
@@ -92,7 +92,6 @@ require (
 	golang.org/x/time v0.8.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
-	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241209162323-e6fa225c2576 // indirect
 	google.golang.org/grpc v1.67.3 // indirect

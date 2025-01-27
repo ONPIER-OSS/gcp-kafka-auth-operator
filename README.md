@@ -50,6 +50,37 @@ Create a test namespace and deploy manifests from `example/test-auth/manifest/ex
 After a couple of minutes, the pod must print all the topics of the kafka instance
 
 
+
+## 4. Test
+
+### Prerequisites
+
+1. Ensure you have the required tools installed:
+    - `kubectl`
+    - `kind` (if running tests in a Kind cluster)
+
+2. Set the environment variable `TEST_ENV` to specify the target environment:
+    - `kind` for running tests in a Kind cluster.
+    - `gcp` for running tests in a GCP cluster.
+
+### Running Tests
+
+#### Kind Cluster
+1. Run the tests:
+   ```bash
+   TEST_ENV=kind make test-e2e
+   ```
+
+#### GCP Cluster
+
+1. Ensure you are authenticated with your GCP project and connected to google vpn.
+
+2. Run the tests:
+   ```bash
+   TEST_ENV=gcp make test-e2e
+   ```
+
+
 # What needs to be implemented
 
 1. First of all, the user_controller must be refactored, it must consist of smaller functions at least. I would build the interface for the gcp objects so we can mock and test
