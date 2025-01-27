@@ -233,8 +233,8 @@ var _ = Describe("Manager", Ordered, func() {
 		})
 	}
 
-	//Before running the tests, set up the environment by creating the namespace,
-	//installing CRDs, and deploying the controller.
+	// Before running the tests, set up the environment by creating the namespace,
+	// installing CRDs, and deploying the controller.
 
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
 	// and deleting the namespace.
@@ -252,7 +252,7 @@ var _ = Describe("Manager", Ordered, func() {
 	//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
 	//    strings.ToLower(<Kind>),
 	// ))
-	//})
+	// })
 
 	if testEnv == "gcp" {
 		BeforeAll(func() {})
