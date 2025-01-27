@@ -32,4 +32,4 @@ jobs:
       - name: Running Test e2e
         run: |
           go mod tidy
-          TEST_ENV=kind make test-e2e
+          make test-e2e

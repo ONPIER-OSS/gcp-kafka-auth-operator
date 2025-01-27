@@ -53,31 +53,13 @@ After a couple of minutes, the pod must print all the topics of the kafka instan
 
 ## 4. Test
 
-### Prerequisites
-
-1. Ensure you have the required tools installed:
-    - `kubectl`
-    - `kind` (if running tests in a Kind cluster)
-
-2. Set the environment variable `TEST_ENV` to specify the target environment:
-    - `kind` for running tests in a Kind cluster.
-    - `gcp` for running tests in a GCP cluster.
-
 ### Running Tests
-
-#### Kind Cluster
-1. Run the tests:
-   ```bash
-   TEST_ENV=kind make test-e2e
-   ```
-
-#### GCP Cluster
 
 1. Ensure you are authenticated with your GCP project and connected to google vpn.
 
 2. Run the tests:
    ```bash
-   TEST_ENV=gcp make test-e2e
+   make test-e2e
    ```
 
 
