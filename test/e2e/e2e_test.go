@@ -27,7 +27,7 @@ import (
 )
 
 
-// testNameSpace where the examole custom resource is deployed
+// testNameSpace where the example custom resource is deployed
 const testNameSpace = "test-kafka-user"
 
 var _ = Describe("Manager", Ordered, func() {
