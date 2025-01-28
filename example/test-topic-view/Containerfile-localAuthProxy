@@ -1,0 +1,10 @@
+FROM ubuntu as builder
+WORKDIR /workdir
+RUN apt update && apt install unzip
+ADD https://github.com/googleapis/managedkafka/archive/refs/tags/v1.0.1.zip .
+RUN unzip v1.0.1.zip
+
+FROM python
+RUN pip install packaging urllib3 google-auth
+COPY --from=builder /workdir/managedkafka-1.0.1/kafka-auth-local-server/kafka_gcp_credentials_server.py /kafka_gcp_credentials_server.py
+CMD ["python", "/kafka_gcp_credentials_server.py"]

@@ -2,18 +2,21 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kafka-test
+  name: topic-access
 ---
 
 apiVersion: v1
 kind: Pod
 metadata:
-  name: nginx
+  labels:
+    app: kafka-access-test
+  name: topic-access
 spec:
-  serviceAccountName: kafka-test
+  serviceAccountName: topic-access
   containers:
-  - name: nginx
-    image: europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/test-kafka-auth
+  - name: kafka-client
+    image: europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/test-kafka-topic-access
+    imagePullPolicy: Always
     ports:
     - containerPort: 80
     env:
@@ -21,15 +24,22 @@ spec:
         value: ic-pcg2-d-workload
       - name: GCP_REGION
         value: europe-west3
-      - name: GCP_CLUSTER_ID
+      - name: KAFKA_CLUSTER_NAME
         value: gwd-pcg2-d-euw3
+      - name: KAFKA_TOPIC
+        value: t1
+  - name: auth-proxy
+    image: europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/kafka-gcp-credentials-server
+    imagePullPolicy: Always
+    ports:
+      - containerPort: 14293
 ---
 apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
 kind: User
 metadata:
-  name: nr-last
+  name: topic-access
 spec:
-  serviceAccountName: kafka-test
+  serviceAccountName: topic-access
   topicAccess:
-    - topic: lead-update-routing-event-retry
+    - topic: t1
       role: readWrite

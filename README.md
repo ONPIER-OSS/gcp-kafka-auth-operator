@@ -50,6 +50,19 @@ Create a test namespace and deploy manifests from `example/test-auth/manifest/ex
 After a couple of minutes, the pod must print all the topics of the kafka instance
 
 
+
+## 4. Test
+
+### Running Tests
+
+1. Ensure you are authenticated with your GCP project and connected to google vpn.
+
+2. Run the tests:
+   ```bash
+   make test-e2e
+   ```
+
+
 # What needs to be implemented
 
 1. First of all, the user_controller must be refactored, it must consist of smaller functions at least. I would build the interface for the gcp objects so we can mock and test
