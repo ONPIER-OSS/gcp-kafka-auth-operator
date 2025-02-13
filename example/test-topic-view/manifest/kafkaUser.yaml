@@ -4,7 +4,7 @@ metadata:
   name: topic-access
 ---
 apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
-kind: User
+kind: KafkaUser
 metadata:
   name: topic-access
 spec:
@@ -12,3 +12,18 @@ spec:
   topicAccess:
     - topic: t1
       role: readWrite
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: topic-access-1
+---
+apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
+kind: KafkaUser
+metadata:
+  name: topic-access-1
+spec:
+  serviceAccountName: topic-access-1
+  topicAccess:
+    - topic: t1
+      role: readOnly

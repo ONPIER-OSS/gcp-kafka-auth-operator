@@ -5,7 +5,7 @@ metadata:
     control-plane: controller-manager
     app.kubernetes.io/name: gcp-kafka-auth-operator
     app.kubernetes.io/managed-by: kustomize
-  name: system
+  name: kafka-operator
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -28,43 +28,18 @@ spec:
       labels:
         control-plane: controller-manager
     spec:
-      # TODO(user): Uncomment the following code to configure the nodeAffinity expression
-      # according to the platforms which are supported by your solution.
-      # It is considered best practice to support multiple architectures. You can
-      # build your manager image using the makefile target docker-buildx.
-      # affinity:
-      #   nodeAffinity:
-      #     requiredDuringSchedulingIgnoredDuringExecution:
-      #       nodeSelectorTerms:
-      #         - matchExpressions:
-      #           - key: kubernetes.io/arch
-      #             operator: In
-      #             values:
-      #               - amd64
-      #               - arm64
-      #               - ppc64le
-      #               - s390x
-      #           - key: kubernetes.io/os
-      #             operator: In
-      #             values:
-      #               - linux
       securityContext:
-        runAsNonRoot: true
-        # TODO(user): For common cases that do not require escalating privileges
-        # it is recommended to ensure that all your Pods/Containers are restrictive.
-        # More info: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
-        # Please uncomment the following code if your project does NOT have to work on old Kubernetes
-        # versions < 1.19 or on vendors versions which do NOT support this field by default (i.e. Openshift < 4.11 ).
-        # seccompProfile:
-        #   type: RuntimeDefault
       containers:
       - command:
         - /manager
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-          - --gcp-project-id=ic-pcg2-d-workload
-        image: europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/operator-test
+          - --gcp-project-id=ic-gmb-d-workload
+          - --region=europe-west3
+          - --kafka-cluster=gmb-d-euw3
+          - --admin-user-email=kafka-operator@ic-gmb-d-workload.iam.gserviceaccount.com
+        image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/onp-gmb-d-arr-euw3-gcr-repo/operator-test
         name: manager
         securityContext:
           allowPrivilegeEscalation: false
@@ -83,8 +58,6 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        # TODO(user): Configure the resources accordingly based on the project requirements.
-        # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
           limits:
             cpu: 500m
@@ -92,5 +65,10 @@ spec:
           requests:
             cpu: 10m
             memory: 64Mi
-      serviceAccountName: controller-manager
+      - name: auth-proxy
+        image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/onp-gmb-d-arr-euw3-gcr-repo/kafka-gcp-credentials-server
+        imagePullPolicy: Always
+        ports:
+          - containerPort: 14293
+      serviceAccountName: kafka-operator
       terminationGracePeriodSeconds: 10

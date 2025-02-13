@@ -25,14 +25,16 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
+	kafkawrap "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var _ = Describe("User Controller", func() {
+var _ = Describe("ClusterTopic Controller", func() {
 	Context("When reconciling a resource", func() {
 		const resourceName = "test-resource"
+
+		kafkainstance := kafkawrap.NewKafkaDummy()
 
 		ctx := context.Background()
 
@@ -40,13 +42,13 @@ var _ = Describe("User Controller", func() {
 			Name:      resourceName,
 			Namespace: "default", // TODO(user):Modify as needed
 		}
-		user := &gcpkafkav1alpha1.User{}
+		clustertopic := &gcpkafkav1alpha1.ClusterTopic{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind User")
-			err := k8sClient.Get(ctx, typeNamespacedName, user)
+			By("creating the custom resource for the Kind ClusterTopic")
+			err := k8sClient.Get(ctx, typeNamespacedName, clustertopic)
 			if err != nil && errors.IsNotFound(err) {
-				resource := &gcpkafkav1alpha1.User{
+				resource := &gcpkafkav1alpha1.ClusterTopic{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: "default",
@@ -59,18 +61,19 @@ var _ = Describe("User Controller", func() {
 
 		AfterEach(func() {
 			// TODO(user): Cleanup logic after each test, like removing the resource instance.
-			resource := &gcpkafkav1alpha1.User{}
+			resource := &gcpkafkav1alpha1.ClusterTopic{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
 			Expect(err).NotTo(HaveOccurred())
 
-			By("Cleanup the specific resource instance User")
+			By("Cleanup the specific resource instance ClusterTopic")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
-			controllerReconciler := &UserReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+			controllerReconciler := &ClusterTopicReconciler{
+				Client:        k8sClient,
+				Scheme:        k8sClient.Scheme(),
+				KafkaInstance: kafkainstance,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{

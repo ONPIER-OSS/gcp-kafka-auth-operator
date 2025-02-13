@@ -20,8 +20,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// UserSpec defines the desired state of User.
-type UserSpec struct {
+// KafkaUserSpec defines the desired state of User.
+type KafkaUserSpec struct {
 	ServiceAccountName string         `json:"serviceAccountName"`
 	TopicAccess        []*TopicAccess `json:"topicAccess,omitempty"`
 	// ReadOnly or ReadWrite access to the whole cluster
@@ -38,32 +38,35 @@ type ClusterAccess struct {
 	Role    string `json:"role"`
 }
 
-// UserStatus defines the observed state of User.
-type UserStatus struct {
-	Ready bool `json:"ready"`
+// KafkaUserStatus defines the observed state of User.
+type KafkaUserStatus struct {
+	Ready              bool           `json:"ready"`
+	TopicAccessApplied []*TopicAccess `json:"topicAccessApplied,omitempty"`
+	SAEmail            string         `json:"saEmail,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
-// User is the Schema for the users API.
-type User struct {
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.ready`,description="Is user ready"
+// +kubebuilder:printcolumn:name="Email",type=string,JSONPath=`.status.saEmail`,description="Google SA Email"
+// KafkaUser is the Schema for the kafka users API.
+type KafkaUser struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   UserSpec   `json:"spec,omitempty"`
-	Status UserStatus `json:"status,omitempty"`
+	Spec   KafkaUserSpec   `json:"spec,omitempty"`
+	Status KafkaUserStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 
 // UserList contains a list of User.
-type UserList struct {
+type KafkaUserList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []User `json:"items"`
+	Items           []KafkaUser `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&User{}, &UserList{})
+	SchemeBuilder.Register(&KafkaUser{}, &KafkaUserList{})
 }

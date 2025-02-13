@@ -26,12 +26,10 @@ import (
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/test/utils"
 )
 
-
 // testNameSpace where the example custom resource is deployed
-const testNameSpace = "test-kafka-user"
+const testNameSpace = "test-kafka-user-2"
 
 var _ = Describe("Manager", Ordered, func() {
-
 	SetDefaultEventuallyTimeout(2 * time.Minute)
 	SetDefaultEventuallyPollingInterval(time.Second)
 
@@ -55,14 +53,20 @@ var _ = Describe("Manager", Ordered, func() {
 
 			By("creating a kafkaUser and k8s service account.")
 			createUser := func(g Gomega) {
-				cmd := exec.Command("kubectl", "apply", "-f", "example/test-topic-view/manifest/kafkaUser.yaml", "-n", testNameSpace)
+				cmd := exec.Command(
+					"kubectl",
+					"apply",
+					"-f",
+					"example/test-topic-view/manifest/kafkaUser.yaml",
+					"-n",
+					testNameSpace,
+				)
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 			}
 			Eventually(createUser, 1*time.Minute).Should(Succeed())
 
 			// wait for google to assign the permissions before creating the pod
-			time.Sleep(2 * time.Minute)
 
 			By("creating the consumer pod.")
 			createPod := func(g Gomega) {
@@ -71,7 +75,6 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(err).NotTo(HaveOccurred())
 			}
 			Eventually(createPod, 1*time.Minute).Should(Succeed())
-
 
 			By("verifying access to kafka topics.")
 			verifyKafkaTopicAccess := func(g Gomega) {

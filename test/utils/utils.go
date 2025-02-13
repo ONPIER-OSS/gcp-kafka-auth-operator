@@ -92,7 +92,7 @@ func IsPrometheusCRDsInstalled() bool {
 	if err != nil {
 		return false
 	}
-	crdList := GetNonEmptyLines(string(output))
+	crdList := GetNonEmptyLines(output)
 	for _, crd := range prometheusCRDs {
 		for _, line := range crdList {
 			if strings.Contains(line, crd) {
@@ -153,7 +153,7 @@ func IsCertManagerCRDsInstalled() bool {
 	}
 
 	// Check if any of the Cert Manager CRDs are present
-	crdList := GetNonEmptyLines(string(output))
+	crdList := GetNonEmptyLines(output)
 	for _, crd := range certManagerCRDs {
 		for _, line := range crdList {
 			if strings.Contains(line, crd) {
@@ -197,7 +197,7 @@ func GetProjectDir() (string, error) {
 	if err != nil {
 		return wd, err
 	}
-	wd = strings.Replace(wd, "/test/e2e", "", -1)
+	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 	return wd, nil
 }
 
@@ -247,5 +247,5 @@ func UncommentCode(filename, target, prefix string) error {
 	}
 	// false positive
 	// nolint:gosec
-	return os.WriteFile(filename, out.Bytes(), 0644)
+	return os.WriteFile(filename, out.Bytes(), 0o644)
 }

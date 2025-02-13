@@ -4,11 +4,22 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 func main() {
+	for {
+		if err := test(); err != nil {
+			log.Printf("Consumer error: %v\n", err)
+		} else {
+			break
+		}
+	}
+}
+
+func test() error {
 	projectID := os.Getenv("GCP_PROJECT")
 	region := os.Getenv("GCP_REGION")
 	kafkaClusterName := os.Getenv("KAFKA_CLUSTER_NAME")
@@ -20,7 +31,7 @@ func main() {
 		"bootstrap.servers":                   bootstrapServer,
 		"group.id":                            consumerGroupName,
 		"enable.auto.offset.store":            false,
-		"session.timeout.ms":                  6000,
+		"session.timeout.ms":                  20000,
 		"security.protocol":                   "SASL_SSL",
 		"sasl.mechanisms":                     "OAUTHBEARER",
 		"sasl.oauthbearer.token.endpoint.url": "localhost:14293",
@@ -32,6 +43,7 @@ func main() {
 	consumer, err := kafka.NewConsumer(config)
 	if err != nil {
 		log.Fatalf("Failed to create consumer: %v", err)
+		return err
 	}
 	defer consumer.Close()
 
@@ -43,16 +55,16 @@ func main() {
 	err = consumer.Assign(partitions)
 	if err != nil {
 		log.Fatalf("Failed to assign partitions: %v", err)
+		return err
 	}
 
 	log.Printf("Waiting for the first message...\n")
-
-	for {
-		msg, err := consumer.ReadMessage(-1)
-		if err != nil {
-			log.Printf("Consumer error: %v\n", err)
-		} else {
-			log.Printf("Consumed message: %s\n", string(msg.Value))
-		}
+	msg, err := consumer.ReadMessage(time.Minute)
+	if err != nil {
+		return err
+	} else {
+		log.Printf("Consumed message: %s\n", string(msg.Value))
 	}
+
+	return nil
 }
