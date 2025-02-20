@@ -4,6 +4,18 @@ COPY . .
 RUN go build -o test
 
 FROM ubuntu
-RUN apt-get update -y && apt-get install -y ca-certificates
+WORKDIR /root
+RUN apt-get update -y && apt-get install -y ca-certificates default-jre wget unzip
+RUN wget -O kafka_2.13-3.7.2.tgz  https://downloads.apache.org/kafka/3.7.2/kafka_2.13-3.7.2.tgz
+RUN tar xfz kafka_2.13-3.7.2.tgz
+ENV KAFKA_HOME=/root/kafka_2.13-3.7.2
+ENV PATH=$PATH:$KAFKA_HOME/bin
+ENV BOOTSTRAP=bootstrap.gwd-pcg2-d-euw3.europe-west3.managedkafka.ic-pcg2-d-workload.cloud.goog:9092
+RUN wget https://github.com/googleapis/managedkafka/releases/download/v1.0.5/release-and-dependencies.zip
+RUN unzip -n release-and-dependencies.zip -d $KAFKA_HOME/libs/
+RUN mv kafka_2.13-3.7.2/libs/release-and-dependencies/dependency/* kafka_2.13-3.7.2/libs/
+RUN mv kafka_2.13-3.7.2/libs/release-and-dependencies/managed-kafka-auth-login-handler-1.0.5.jar kafka_2.13-3.7.2/libs/
+RUN rm -rf kafka_2.13-3.7.2/libs/release-and-dependencies
+COPY client.properties .
 COPY --from=builder /workdir/test /test
 CMD ["/test"]
