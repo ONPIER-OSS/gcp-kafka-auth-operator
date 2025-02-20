@@ -38,7 +38,7 @@ var _ = Describe("Manager", Ordered, func() {
 	BeforeAll(func() {})
 	AfterAll(func() {
 		By("uninstalling test-topic-access pod and removing kafka user custom resource")
-		cmd := exec.Command("kubectl", "delete", "-f", "example/test-topic-view/manifest/example.yaml", "-n", testNameSpace)
+		cmd := exec.Command("kubectl", "delete", "-f", "example/test-topic-view/manifest/", "-n", testNameSpace)
 		_, _ = utils.Run(cmd)
 
 		By("removing test namespace")
@@ -53,13 +53,25 @@ var _ = Describe("Manager", Ordered, func() {
 			_, err := utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create namespace")
 
-			By("creating a kafkaUser custom resource.")
-			createResources := func(g Gomega) {
-				cmd := exec.Command("kubectl", "apply", "-f", "example/test-topic-view/manifest/example.yaml", "-n", testNameSpace)
+			By("creating a kafkaUser and k8s service account.")
+			createUser := func(g Gomega) {
+				cmd := exec.Command("kubectl", "apply", "-f", "example/test-topic-view/manifest/kafkaUser.yaml", "-n", testNameSpace)
 				_, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
 			}
-			Eventually(createResources, 1*time.Minute).Should(Succeed())
+			Eventually(createUser, 1*time.Minute).Should(Succeed())
+
+			// wait for google to assign the permissions before creating the pod
+			time.Sleep(2 * time.Minute)
+
+			By("creating the consumer pod.")
+			createPod := func(g Gomega) {
+				cmd := exec.Command("kubectl", "apply", "-f", "example/test-topic-view/manifest/pod.yaml", "-n", testNameSpace)
+				_, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			Eventually(createPod, 1*time.Minute).Should(Succeed())
+
 
 			By("verifying access to kafka topics.")
 			verifyKafkaTopicAccess := func(g Gomega) {

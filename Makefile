@@ -1,5 +1,10 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/operator-test:latest
+
+# Image URL for topic-access e2e test
+E2E_TEST_TOPIC_ACCESS_IMG ?= europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/test-kafka-topic-access:latest
+E2E_TEST_AUTH_PROXY_IMG ?= europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/kafka-gcp-credentials-server:latest
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
 
@@ -39,7 +44,7 @@ all: build
 
 .PHONY: help
 help: ## Display this help.
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-29s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Development
 
@@ -123,6 +128,17 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	mkdir -p dist
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default > dist/install.yaml
+
+.PHONY: docker-build-e2e-topic-access
+docker-build-e2e-topic-access: ## Build docker image with the topic-access and GCP auth proxy.
+	$(CONTAINER_TOOL) build -f ./example/test-topic-view/Containerfile --platform=linux/amd64 -t ${E2E_TEST_TOPIC_ACCESS_IMG} ./example/test-topic-view
+	$(CONTAINER_TOOL) build -f ./example/test-topic-view/Containerfile-localAuthProxy --platform=linux/amd64 -t ${E2E_TEST_AUTH_PROXY_IMG} ./example/test-topic-view
+
+.PHONY: docker-push-e2e-topic-access
+docker-push-e2e-topic-access: ## Push docker image with the topic-access and GCP auth proxy.
+	$(CONTAINER_TOOL) push ${E2E_TEST_TOPIC_ACCESS_IMG}
+	$(CONTAINER_TOOL) push ${E2E_TEST_AUTH_PROXY_IMG}
+
 
 ##@ Deployment
 
