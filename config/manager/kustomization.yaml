@@ -4,5 +4,5 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
 - name: controller
-  newName: europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/operator-test
+  newName: europe-west3-docker.pkg.dev/ic-gmb-d-workload/gcr/operator-test
   newTag: latest

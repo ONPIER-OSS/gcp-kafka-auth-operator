@@ -27,7 +27,7 @@ import (
 )
 
 // testNameSpace where the example custom resource is deployed
-const testNameSpace = "test-kafka-user-2"
+const testNameSpace = "test-kafka-user"
 
 var _ = Describe("Manager", Ordered, func() {
 	SetDefaultEventuallyTimeout(2 * time.Minute)

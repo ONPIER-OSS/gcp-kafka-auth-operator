@@ -21,7 +21,7 @@ If something is missing, please add
 
 It's possible to run `make deploy` and the operator will get deployed by the kustomizations that can be found in the `config` folder
 
-But there is a couple of steps that need to be done manually 
+But there is a couple of steps that need to be done manually
 
 1. Add a required annotation to the k8s SA
 
@@ -69,7 +69,7 @@ After a couple of minutes, the pod must print all the topics of the kafka instan
 2. Deletion of users is not supported, but it's a must have, I would also add `deletionProtection`
 3. I'm using a bunch of google libs atm, maybe we can use a smaller amount of them, because there are two repos with gcp sdk
 4. All the hardcoded values from the user_controller must be dynamic and the configuration shouldn't happen on the controller level, but in the main.go
-5. Roles that are used for the kafka access must not be hardcoded, I would  use args to set something like 
+5. Roles that are used for the kafka access must not be hardcoded, I would  use args to set something like
 ```sh
 --read-only-role "managedkafka.viewer" --read-write-role "managedkafka.admin"
 ```

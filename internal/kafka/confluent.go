@@ -47,7 +47,7 @@ func NewKafkaConfluent(projectID, kafkaClusterName, region string) (KafkaImpl, e
 }
 
 // CreateTopic implements KafkaImpl.
-func (kfk *KafkaConfluent) CreateTopic(ctx context.Context, name string, numPartitions, replicationFactor int, config map[string]string) error {
+func (kc *KafkaConfluent) CreateTopic(ctx context.Context, name string, numPartitions, replicationFactor int, config map[string]string) error {
 	log := log.FromContext(ctx)
 	topic := kafka.TopicSpecification{
 		Topic:             name,
@@ -56,7 +56,7 @@ func (kfk *KafkaConfluent) CreateTopic(ctx context.Context, name string, numPart
 		Config:            config,
 	}
 	topics := []kafka.TopicSpecification{topic}
-	res, err := kfk.AdminClient.CreateTopics(ctx, topics, kafka.SetAdminOperationTimeout(time.Minute*2))
+	res, err := kc.AdminClient.CreateTopics(ctx, topics, kafka.SetAdminOperationTimeout(time.Minute*2))
 	if err != nil {
 		log.Error(err, "Couldn't remove ACLs")
 		return err
@@ -66,9 +66,9 @@ func (kfk *KafkaConfluent) CreateTopic(ctx context.Context, name string, numPart
 }
 
 // RemoveTopic implements KafkaImpl.
-func (kfk *KafkaConfluent) RemoveTopic(ctx context.Context, name string) error {
+func (kc *KafkaConfluent) RemoveTopic(ctx context.Context, name string) error {
 	log := log.FromContext(ctx)
-	res, err := kfk.AdminClient.DeleteTopics(ctx, []string{name}, kafka.SetAdminOperationTimeout(time.Minute*2))
+	res, err := kc.AdminClient.DeleteTopics(ctx, []string{name}, kafka.SetAdminOperationTimeout(time.Minute*2))
 	if err != nil {
 		log.Error(err, "Couldn't remove ACLs")
 		return err
@@ -99,7 +99,7 @@ func NewTopicAccess(topic, access string) (*TopicAccess, error) {
 	}
 }
 
-func (kfk *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []*TopicAccess) (err error) {
+func (kc *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []*TopicAccess) (err error) {
 	log := log.FromContext(ctx)
 
 	principal := fmt.Sprintf("User:%s", user)
@@ -116,7 +116,7 @@ func (kfk *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []
 		}
 		bindingFilters = append(bindingFilters, aclsToDelete)
 	}
-	res, err := kfk.AdminClient.DeleteACLs(ctx, bindingFilters)
+	res, err := kc.AdminClient.DeleteACLs(ctx, bindingFilters)
 	if err != nil {
 		log.Error(err, "Couldn't remove ACLs")
 		return err
@@ -125,7 +125,7 @@ func (kfk *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []
 	return nil
 }
 
-func (kfk *KafkaConfluent) CreateACL(ctx context.Context, user string, access []*TopicAccess) (err error) {
+func (kc *KafkaConfluent) CreateACL(ctx context.Context, user string, access []*TopicAccess) (err error) {
 	log := log.FromContext(ctx)
 
 	principal := fmt.Sprintf("User:%s", user)
@@ -142,12 +142,12 @@ func (kfk *KafkaConfluent) CreateACL(ctx context.Context, user string, access []
 		}
 		bindings = append(bindings, binding)
 	}
-	res2, err := kfk.AdminClient.CreateACLs(ctx, bindings)
+	res, err := kc.AdminClient.CreateACLs(ctx, bindings)
 	if err != nil {
 		log.Error(err, "Couldn't create ACLs")
 		return err
 	}
 
-	log.Info(fmt.Sprintf("%v", res2))
+	log.Info(fmt.Sprintf("%v", res))
 	return nil
 }

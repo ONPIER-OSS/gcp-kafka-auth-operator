@@ -142,7 +142,6 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 		return err
 	}
 
-	log.Info(sa.Email)
 	userCR.Status.SAEmail = sa.Email
 	if err := r.Status().Update(ctx, userCR); err != nil {
 		log.Error(err, "Couldn't update the userCR status")
@@ -320,7 +319,7 @@ func castAccessToKafkaFormat(ctx context.Context, input []*gcpkafkav1alpha1.Topi
 // This functions checks whether an element of the first array
 // is presented in the second, and if so, it's not including
 // it in the result
-func findUnique(first, second []*kafkawrap.TopicAccess) (result []*kafkawrap.TopicAccess) {
+func findAccessDiff(first, second []*kafkawrap.TopicAccess) (result []*kafkawrap.TopicAccess) {
 	for _, el1 := range first {
 		presereve := true
 		for _, el2 := range second {
@@ -351,9 +350,9 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 	}
 
 	log.Info("Current amount of ACLs", "amount", len(currentAccess))
-	delAccess := findUnique(currentAccess, desiredAccess)
+	delAccess := findAccessDiff(currentAccess, desiredAccess)
 	log.Info("ACLs are marked for removing", "amount", len(delAccess))
-	newAccess := findUnique(desiredAccess, currentAccess)
+	newAccess := findAccessDiff(desiredAccess, currentAccess)
 	log.Info("ACLs are marked for creating", "amount", len(newAccess))
 
 	if len(delAccess) > 0 {
@@ -417,10 +416,10 @@ func deleteServiceAccount(ctx context.Context, projectID, serviceAccountEmail st
 		Delete(fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccountEmail)).Do()
 	if err != nil {
 		if errCasted, ok := err.(*googleapi.Error); ok {
-			// If already exists
+			// If doesn't exist
 			// https://cloud.google.com/pubsub/docs/reference/error-codes
-			if errCasted.Code == 409 {
-				log.Info("Service Account already exists, re-using")
+			if errCasted.Code == 404 {
+				log.Info("Service Account is not found, skipping")
 			}
 		} else {
 			log.Error(err, "Couldn't create a service account")
@@ -431,7 +430,7 @@ func deleteServiceAccount(ctx context.Context, projectID, serviceAccountEmail st
 	return nil
 }
 
-func getServiceAccount(ctx context.Context, projectID, serviceAccountName string, atempts int) (*iam.ServiceAccount, error) {
+func getServiceAccount(ctx context.Context, projectID, serviceAccountName string, attempts int) (*iam.ServiceAccount, error) {
 	log := log.FromContext(ctx)
 	log.Info("Getting a service account", "name", serviceAccountName)
 	var sa *iam.ServiceAccount
@@ -446,7 +445,7 @@ func getServiceAccount(ctx context.Context, projectID, serviceAccountName string
 	}
 
 	// Get SA
-	for i := range atempts {
+	for i := range attempts {
 		// We need either ID or email to get a service account
 		serviceAccountEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", serviceAccountName, projectID)
 		log.Info("trying to get SA", "try", i, "email", serviceAccountEmail)
@@ -538,22 +537,7 @@ func addKafkaIAMBinding(
 		log.Error(err, "Failed to get IAM policy")
 		return err
 	}
-	upodatedPolicy := cleanUpPolicy(ctx, serviceAccountEmail, rawPolicy)
-	// Remove all the roles to ensure the changed roles
-	for _, binding := range upodatedPolicy.Bindings {
-		saEmail := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
-		if slices.Contains(binding.Members, saEmail) {
-			newMembers := []string{}
-			for _, member := range binding.Members {
-				if member != saEmail {
-					newMembers = append(newMembers, member)
-				} else {
-					log.Info("Removing member from the policy", "email", saEmail, "role", binding.Role)
-				}
-			}
-			binding.Members = newMembers
-		}
-	}
+	updatedPolicy := cleanUpPolicy(ctx, serviceAccountEmail, rawPolicy)
 
 	if len(clusterAccess) > 0 {
 		var clusterRole string
@@ -567,25 +551,46 @@ func addKafkaIAMBinding(
 			log.Error(err, "Unsupported access type", "type", clusterAccess)
 			return err
 		}
-		for _, binding := range upodatedPolicy.Bindings {
+		added := false
+		member := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
+		for _, binding := range updatedPolicy.Bindings {
 			if binding.Role == clusterRole {
-				binding.Members = append(binding.Members, fmt.Sprintf("serviceAccount:%s", serviceAccountEmail))
+				binding.Members = append(binding.Members, member)
+				added = true
 			}
+		}
+		if !added {
+			log.Info("No existing binding found, creating a new one", "role", clusterRole)
+			updatedPolicy.Bindings = append(updatedPolicy.Bindings, &iampb.Binding{
+				Role:    clusterRole,
+				Members: []string{member},
+			})
 		}
 	} else {
 		log.Info("Cluster access is disabled, roles will be managed by ACLs")
-		for _, binding := range upodatedPolicy.Bindings {
+		member := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
+		added := false
+		for _, binding := range updatedPolicy.Bindings {
 			if binding.Role == readWriteRole {
-				binding.Members = append(binding.Members, fmt.Sprintf("serviceAccount:%s", serviceAccountEmail))
+				log.Info("Adding a new member to a role", "member", serviceAccountEmail, "role", readWriteRole)
+				binding.Members = append(binding.Members, member)
+				added = true
 			}
 		}
+		if !added {
+			log.Info("No existing binding found, creating a new one", "role", readWriteRole)
+			updatedPolicy.Bindings = append(updatedPolicy.Bindings, &iampb.Binding{
+				Role:    readWriteRole,
+				Members: []string{member},
+			})
+		}
 	}
-	log.Info("Updating bindings")
 
+	log.Info("Updating bindings")
 	// Set the updated IAM policy.
 	setRequest := &iampb.SetIamPolicyRequest{
 		Resource: "projects/" + projectID,
-		Policy:   upodatedPolicy,
+		Policy:   updatedPolicy,
 	}
 	_, err = client.SetIamPolicy(ctx, setRequest)
 	if err != nil {
@@ -605,7 +610,7 @@ func cleanUpPolicy(ctx context.Context, saEmail string, policy *iampb.Policy) *i
 	for _, binding := range newPolicy.Bindings {
 		sa := fmt.Sprintf("serviceAccount:%s", saEmail)
 		if slices.Contains(binding.Members, saEmail) {
-			newMembers := []string{}
+			var newMembers []string
 			for _, member := range binding.Members {
 				if member != saEmail {
 					newMembers = append(newMembers, member)
@@ -648,22 +653,8 @@ func deleteKafkaIAMBinding(ctx context.Context, projectID, serviceAccountEmail s
 		return err
 	}
 	updatedPolicy := cleanUpPolicy(ctx, serviceAccountEmail, rawPolicy)
-	for _, binding := range updatedPolicy.Bindings {
-		saEmail := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
-		if slices.Contains(binding.Members, saEmail) {
-			newMembers := []string{}
-			for _, member := range binding.Members {
-				if member != saEmail {
-					newMembers = append(newMembers, member)
-				} else {
-					log.Info("Removing member from the policy", "email", saEmail, "role", binding.Role)
-				}
-			}
-			binding.Members = newMembers
-		}
-	}
-	log.Info("Updating bindings")
 
+	log.Info("Updating bindings")
 	// Set the updated IAM policy.
 	setRequest := &iampb.SetIamPolicyRequest{
 		Resource: "projects/" + projectID,

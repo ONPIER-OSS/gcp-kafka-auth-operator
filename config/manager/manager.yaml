@@ -39,7 +39,7 @@ spec:
           - --region=europe-west3
           - --kafka-cluster=gmb-d-euw3
           - --admin-user-email=kafka-operator@ic-gmb-d-workload.iam.gserviceaccount.com
-        image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/onp-gmb-d-arr-euw3-gcr-repo/operator-test
+        image: controller
         name: manager
         securityContext:
           allowPrivilegeEscalation: false
@@ -66,7 +66,7 @@ spec:
             cpu: 10m
             memory: 64Mi
       - name: auth-proxy
-        image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/onp-gmb-d-arr-euw3-gcr-repo/kafka-gcp-credentials-server
+        image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/gcr/kafka-gcp-credentials-server
         imagePullPolicy: Always
         ports:
           - containerPort: 14293

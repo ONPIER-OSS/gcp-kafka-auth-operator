@@ -1,9 +1,9 @@
 # Image URL to use all building/pushing image targets
-IMG ?= europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/operator-test:latest
+IMG ?= europe-west3-docker.pkg.dev/ic-gmb-d-workload/gcr/operator-test:latest
 
 # Image URL for topic-access e2e test
-E2E_TEST_TOPIC_ACCESS_IMG ?= europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/test-kafka-topic-access:latest
-E2E_TEST_AUTH_PROXY_IMG ?= europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/kafka-gcp-credentials-server:latest
+E2E_TEST_TOPIC_ACCESS_IMG ?= europe-west3-docker.pkg.dev/ic-gmb-d-workload/gcr/test-kafka-topic-access:latest
+E2E_TEST_AUTH_PROXY_IMG ?= europe-west3-docker.pkg.dev/ic-gmb-d-workload/gcr/kafka-gcp-credentials-server:latest
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.31.0
