@@ -1,8 +1,9 @@
 name: E2E Tests
-
-on:
-  push:
-  pull_request:
+# -- TODO: We need to figure out how to handle e2e tests.
+#          Tests need to have an access to google cloud
+#          but we are not sure yet how to do it in
+#          github actions
+on: {}
 
 jobs:
   test-e2e:

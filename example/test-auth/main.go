@@ -38,4 +38,3 @@ func main() {
 		fmt.Printf("Got topic: %v", res)
 	}
 }
-

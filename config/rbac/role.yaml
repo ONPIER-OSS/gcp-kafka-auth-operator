@@ -15,7 +15,8 @@ rules:
 - apiGroups:
   - gcp-kafka.k8s.onpier.de
   resources:
-  - users
+  - clustertopics
+  - kafkausers
   verbs:
   - create
   - delete
@@ -27,13 +28,15 @@ rules:
 - apiGroups:
   - gcp-kafka.k8s.onpier.de
   resources:
-  - users/finalizers
+  - clustertopics/finalizers
+  - kafkausers/finalizers
   verbs:
   - update
 - apiGroups:
   - gcp-kafka.k8s.onpier.de
   resources:
-  - users/status
+  - clustertopics/status
+  - kafkausers/status
   verbs:
   - get
   - patch

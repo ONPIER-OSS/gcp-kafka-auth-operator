@@ -4,20 +4,31 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.16.4
-  name: users.gcp-kafka.k8s.onpier.de
+  name: clustertopics.gcp-kafka.k8s.onpier.de
 spec:
   group: gcp-kafka.k8s.onpier.de
   names:
-    kind: User
-    listKind: UserList
-    plural: users
-    singular: user
-  scope: Namespaced
+    kind: ClusterTopic
+    listKind: ClusterTopicList
+    plural: clustertopics
+    shortNames:
+    - topic
+    singular: clustertopic
+  scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - description: Is topic deletion protected
+      jsonPath: .spec.deletionProtected
+      name: DeletionProtected
+      type: string
+    - description: Is topic ready
+      jsonPath: .status.ready
+      name: Ready
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: User is the Schema for the users API.
+        description: ClusterTopic is the Schema for the clustertopics API.
         properties:
           apiVersion:
             description: |-
@@ -37,30 +48,24 @@ spec:
           metadata:
             type: object
           spec:
-            description: UserSpec defines the desired state of User.
+            description: ClusterTopicSpec defines the desired state of ClusterTopic.
             properties:
-              clusterAccess:
-                description: ReadOnly or ReadWrite access to the whole cluster
-                type: string
-              serviceAccountName:
-                type: string
-              topicAccess:
-                items:
-                  properties:
-                    role:
-                      type: string
-                    topic:
-                      type: string
-                  required:
-                  - role
-                  - topic
-                  type: object
-                type: array
+              config:
+                additionalProperties:
+                  type: string
+                type: object
+              deletionProtected:
+                type: boolean
+              numPartitions:
+                type: integer
+              replicationFactor:
+                type: integer
             required:
-            - serviceAccountName
+            - numPartitions
+            - replicationFactor
             type: object
           status:
-            description: UserStatus defines the observed state of User.
+            description: ClusterTopicStatus defines the observed state of ClusterTopic.
             properties:
               ready:
                 type: boolean
