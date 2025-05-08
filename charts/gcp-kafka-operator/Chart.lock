@@ -1,0 +1,6 @@
+dependencies:
+- name: gcp-kafka-operator-crd
+  repository: file://../gcp-kafka-operator-crd
+  version: 0.1.0
+digest: sha256:caffd17af8e0794d0092a71a72ccd9758367c37969180ac1d529a648f2ba2701
+generated: "2025-05-08T13:11:25.670226361+02:00"

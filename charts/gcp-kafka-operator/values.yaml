@@ -1,0 +1,27 @@
+images:
+  controller:
+    registry: ghcr.io
+    repository: onpier-oss/gcp-kafka-operator
+    tag: 
+  proxy:
+    registry: ghcr.io
+    repository: onpier-oss/gcp-kafka-proxy
+    tag: 
+crds:
+  enabled: true
+  annotations:
+    helm.sh/resource-policy: keep
+serviceAccount:
+  gcpSA: test
+
+config: 
+  # -- The ID of the google prohect
+  gcpProject:
+  # -- The region of the kafka cluster
+  region: google-region
+  # -- The name of the kafka cluster
+  kafkaCluster: kafka-cluster-name
+  # -- The email of the google SA of the operator
+  adminSAEmail: email@email.email
+
+

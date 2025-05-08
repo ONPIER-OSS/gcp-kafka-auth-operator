@@ -1,0 +1,45 @@
+---
+apiversion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    {{- include "gcp-kafka-operator.labels" . | nindent 4 }}
+  name: {{ include "gcp-kafka-operator.fullname" . }}
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - serviceaccounts
+  verbs:
+  - list
+  - update
+  - watch
+- apiGroups:
+  - gcp-kafka.k8s.onpier.de
+  resources:
+  - clustertopics
+  - kafkausers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - gcp-kafka.k8s.onpier.de
+  resources:
+  - clustertopics/finalizers
+  - kafkausers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - gcp-kafka.k8s.onpier.de
+  resources:
+  - clustertopics/status
+  - kafkausers/status
+  verbs:
+  - get
+  - patch
+  - update
