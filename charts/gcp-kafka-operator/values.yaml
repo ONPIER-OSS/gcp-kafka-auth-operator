@@ -12,16 +12,17 @@ crds:
   annotations:
     helm.sh/resource-policy: keep
 serviceAccount:
+  name: kafka-operator
   gcpSA: test
 
 config: 
   # -- The ID of the google prohect
   gcpProject:
   # -- The region of the kafka cluster
-  region: google-region
+  region:
   # -- The name of the kafka cluster
-  kafkaCluster: kafka-cluster-name
+  kafkaCluster:
   # -- The email of the google SA of the operator
-  adminSAEmail: email@email.email
+  adminSAEmail:
 
 
