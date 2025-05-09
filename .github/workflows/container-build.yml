@@ -39,10 +39,10 @@ jobs:
           containerfiles: |
             ${{ matrix.container.file }}
           labels: ${{ env.ANNOTATIONS }}
-      - name: Set the regestry in the lower case
+      - name: Set the registry in the lower case
         id: registry
         run: |
-          echo "registry=$(echo ghcr.io/${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]'))\n" >> $GITHUB_OUTPUT
+          echo "registry=$(echo ghcr.io/${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')\n" >> $GITHUB_OUTPUT
       - name: Push the image to GHCR
         id: push-to-ghcr
         uses: redhat-actions/push-to-registry@v2
