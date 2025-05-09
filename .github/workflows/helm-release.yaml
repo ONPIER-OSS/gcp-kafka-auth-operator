@@ -26,7 +26,7 @@ jobs:
             helm package $chart -d chart-packages;
           done
           charts=$(find chart-packages -maxdepth 1 -mindepth 1 -type f)
+          REGISTRY=$(echo oci://ghcr.io/${{ github.repository }} | tr '[:upper:]' '[:lower:]')
           for chart in $charts; do
-            echo "Pusing $chart to oci://ghcr.io/${{ github.repository }}"
-            helm push $chart oci://ghcr.io/${{ github.repository }}
+            helm push "${chart}a "${REGISTRY}"
           done
