@@ -28,5 +28,5 @@ jobs:
           charts=$(find chart-packages -maxdepth 1 -mindepth 1 -type f)
           REGISTRY=$(echo oci://ghcr.io/${{ github.repository }} | tr '[:upper:]' '[:lower:]')
           for chart in $charts; do
-            helm push "${chart}a "${REGISTRY}"
+            helm push "${chart}" "${REGISTRY}"
           done
