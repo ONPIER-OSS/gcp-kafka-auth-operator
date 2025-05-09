@@ -20,9 +20,10 @@ jobs:
             --username ${{ github.actor }} \
             --password ${{ github.token }}
           for chart in $(find charts -maxdepth 1 -mindepth 1 -type d); do
-            if [ "${BRANCH}" != "main" ]; then
+            if [ "${BRANCH}" != "master" ]; then
               yq e -i ".version += env(SHA)" "$chart/Chart.yaml"
             fi
+            helm dep build $chart
             helm package $chart -d chart-packages;
           done
           charts=$(find chart-packages -maxdepth 1 -mindepth 1 -type f)
