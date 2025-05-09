@@ -8,15 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    #permissions:
-    #  packages: write
-    strategy:
-      matrix:
-        container:
-          - file: ./Dockerfile
-            name: gcp-kafka-auth-operator
-          - file: ./Dockerfile.proxy
-            name: gcp-kafka-auth-proxy
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
