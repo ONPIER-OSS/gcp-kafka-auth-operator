@@ -34,8 +34,6 @@ jobs:
           image: ${{ matrix.container.name }}-dev
           tags: ${{ env.TAGS }}
           platforms: linux/amd64, linux/arm64/v8
-          build-args: |
-            OPERATOR_VERSION=${{ env.OPERATOR_VERSION }}
           containerfiles: |
             ${{ matrix.container.file }}
           labels: ${{ env.ANNOTATIONS }}
