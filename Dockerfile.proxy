@@ -1,0 +1,17 @@
+ARG KAFKA_TOOLS_VERSION=v1.0.5
+
+FROM ubuntu as builder
+ARG KAFKA_TOOLS_VERSION
+WORKDIR /workdir
+RUN apt update && apt install unzip
+ADD https://github.com/googleapis/managedkafka/archive/refs/tags/${KAFKA_TOOLS_VERSION}.zip .
+RUN unzip ${KAFKA_TOOLS_VERSION}.zip
+RUN mkdir /out
+RUN mv $(find . -type f -name kafka_gcp_credentials_server.py) /out/
+
+FROM python
+ARG KAFKA_TOOLS_VERSION
+RUN pip install packaging urllib3 google-auth
+WORKDIR /src
+COPY --from=builder /out/* .
+CMD ["python", "/src/kafka_gcp_credentials_server.py"]
