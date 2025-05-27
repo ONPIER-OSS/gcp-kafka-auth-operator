@@ -35,10 +35,12 @@ jobs:
           containerfiles: |
             ${{ matrix.container.file }}
           labels: ${{ env.ANNOTATIONS }}
+      
       - name: Set the registry in the lower case
         id: registry
         run: |
           echo "registry=$(echo ghcr.io/${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+      
       - name: Push the image to GHCR
         id: push-to-ghcr
         uses: redhat-actions/push-to-registry@v2
@@ -55,15 +57,15 @@ jobs:
         run: |
           buildah tag \
           ${{ steps.build-image.outputs.image }}:${{ github.sha }} \
-          ghcr.io/${{ github.repository_owner }}/${{ matrix.container.name }}:latest
+          ${{ steps.registry.outputs.registry }}/${{ matrix.container.name }}:latest
           buildah tag \
           ${{ steps.build-image.outputs.image }}:${{ github.sha }} \
-          ghcr.io/${{ github.repository_owner }}/${{ matrix.container.name }}:${{ github.event.release.tag_name }}
+          ${{ steps.registry.outputs.registry }}/${{ matrix.container.name }}:${{ github.event.release.tag_name }}
 
       - name: Push the release image to GHCR
         if: (github.event_name == 'release' && (github.event.action == 'published' || github.event.action == 'edited'))
         uses: redhat-actions/push-to-registry@v2
         with:
-          tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.container.name }}:latest ghcr.io/${{ github.repository_owner }}/${{ matrix.container.name }}:${{ github.event.release.tag_name }}
+          tags: ${{ steps.registry.outputs.registry }}/${{ matrix.container.name }}:latest ${{ steps.registry.outputs.registry }}/${{ matrix.container.name }}:${{ github.event.release.tag_name }}
           username: ${{ github.actor }}
           password: ${{ github.token }}
