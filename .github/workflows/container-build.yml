@@ -13,12 +13,16 @@ jobs:
         container:
           - file: ./Dockerfile
             name: gcp-kafka-auth-operator
+            context: .
           - file: ./Dockerfile.proxy
             name: gcp-kafka-auth-proxy
+            context: .
           - file: ./example/test-auth/Containerfile
             name: gcp-kafka-operator-test-auth
+            context: ./example/test-auth
           - file: ./example/test-topic-view/Containerfile
             name: gcp-kafka-test-topic-access
+            context: ./example/test-topic-view
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
@@ -39,6 +43,7 @@ jobs:
           containerfiles: |
             ${{ matrix.container.file }}
           labels: ${{ env.ANNOTATIONS }}
+          context: ${{ matrix.container.context }}
       
       - name: Set the registry in the lower case
         id: registry
