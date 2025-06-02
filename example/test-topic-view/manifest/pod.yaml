@@ -8,21 +8,21 @@ spec:
   serviceAccountName: topic-access
   containers:
   - name: kafka-client
-    image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/gcr/test-kafka-topic-access
+    image: ghcr.io/onpier-oss/gcp-kafka-test-topic-access
     imagePullPolicy: Always
     ports:
     - containerPort: 80
     env:
       - name: GCP_PROJECT
-        value: ic-gmb-d-workload
+        value: < GCP PROJECT ID >
       - name: GCP_REGION
-        value: europe-west3
+        value: < REGION >
       - name: KAFKA_CLUSTER_NAME
-        value: gmb-d-euw3
+        value: < AN ID OF THE KAFKA CLUSTER > 
       - name: KAFKA_TOPIC
-        value: t1
+        value: < A TOPIC TO TEST AGAINST > 
   - name: auth-proxy
-    image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/gcr/kafka-gcp-credentials-server
+    image: ghcr.io/onpier-oss/gcp-kafka-proxy
     imagePullPolicy: Always
     ports:
       - containerPort: 14293

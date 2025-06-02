@@ -1,0 +1,12 @@
+apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
+kind: ClusterTopic
+metadata:
+  labels:
+    app.kubernetes.io/name: gcp-kafka-auth-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: t1
+spec:
+  numPartitions: 2
+  replicationFactor: 2
+  config:
+    "max.message.bytes": "1048576"

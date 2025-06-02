@@ -35,10 +35,10 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-          - --gcp-project-id=ic-gmb-d-workload
-          - --region=europe-west3
-          - --kafka-cluster=gmb-d-euw3
-          - --admin-user-email=kafka-operator@ic-gmb-d-workload.iam.gserviceaccount.com
+          - --gcp-project-id=< GCP PROJECT ID > 
+          - --region=< REGION >
+          - --kafka-cluster=< KAFKA CLUSTER ID >
+          - --admin-user-email=< OPERATOR SA EMAIL >
         image: controller
         name: manager
         securityContext:
@@ -66,7 +66,7 @@ spec:
             cpu: 10m
             memory: 64Mi
       - name: auth-proxy
-        image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/gcr/kafka-gcp-credentials-server
+        image: ghcr.io/onpier-oss/gcp-kafka-auth-proxy
         imagePullPolicy: Always
         ports:
           - containerPort: 14293
