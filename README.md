@@ -34,14 +34,12 @@ iam.gke.io/gcp-service-account: $EMAIL_OF_THE_SA_FROM_STEP_1_3
 gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL_STEP_1_3 --role roles/iam.workloadIdentityUser --member "serviceAccount:$GCP_PROJECT_ID.svc.id.goog[$OPERATOR_NS/$OPERATOR_SA_NAME]" --project $GCP_PROJECT_ID
 ```
 
-3. Operator image should be replaced by `europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/operator-test`
-
 ## 3. Build
 
 One can use docker/podman/nerdctl/buildah
 ```
-podman build -t europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/operator-test .
-podman push europe-west3-docker.pkg.dev/ic-pcg2-d-workload/onp-pcg2-d-arr-euw3-gcr-repo/operator-test
+podman build -t ghcr.io/onpier-oss/gcp-kafka-auth-operator .
+podman push ghcr.io/onpier-oss/gcp-kafka-auth-operator
 ```
 
 ## 4. Test

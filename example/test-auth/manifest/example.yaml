@@ -1,65 +1,34 @@
-#---
-#
-#apiVersion: v1
-#kind: Pod
-#metadata:
-#  name: nginx
-#spec:
-#  serviceAccountName: kafka-test
-#  containers:
-#  - name: nginx
-#    image: europe-west3-docker.pkg.dev/ic-gmb-d-workload/onp-gmb-d-arr-euw3-gcr-repo/test-kafka-auth
-#    ports:
-#    - containerPort: 80
-#    env:
-#      - name: GCP_PROJECT
-#        value: ic-gmb-d-workload
-#      - name: GCP_REGION
-#        value: europe-west3
-#      - name: GCP_CLUSTER_ID
-#        value: gwd-gmb-d-euw3
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kafka-test-auth
+spec:
+  serviceAccountName: kafka-test-auth
+  containers:
+  - name: kafka-test-auth
+    image: ghcr.io/onpier-oss/gcp-kafka-operator-test-auth
+    ports:
+    - containerPort: 80
+    env:
+      - name: GCP_PROJECT
+        value: < THE PROJECT NAME>
+      - name: GCP_REGION
+        value: < REGION > 
+      - name: GCP_CLUSTER_ID
+        value: < ID OF THE KAFKA CLUSTER >
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kafka-test
+  name: kafka-test-auth
 ---
 apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
 kind: User
 metadata:
-  name: nr-last
+  name: user-1
 spec:
-  serviceAccountName: kafka-test
+  serviceAccountName: kafka-test-auth
   topicAccess:
-    - topic: lead-update-routing-event-retry
-      role: readOnly
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: kafka-test-2
----
-apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
-kind: User
-metadata:
-  name: nr-last-2
-spec:
-  serviceAccountName: kafka-test2
-  topicAccess:
-    - topic: lead-update-routing-event-retry
-      role: readOnly
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: kafka-test-3
----
-apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
-kind: User
-metadata:
-  name: nr-last-3
-spec:
-  serviceAccountName: kafka-test-3
-  topicAccess:
-    - topic: lead-update-routing-event-retry
+    - topic: < TOPIC NAME >
       role: readOnly

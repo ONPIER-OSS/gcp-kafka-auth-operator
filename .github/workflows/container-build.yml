@@ -15,6 +15,10 @@ jobs:
             name: gcp-kafka-auth-operator
           - file: ./Dockerfile.proxy
             name: gcp-kafka-auth-proxy
+          - file: ./example/test-auth/Containerfile
+            name: gcp-kafka-operator-test-auth
+          - file: ./example/test-topic-view/Containerfile
+            name: gcp-kafka-test-topic-access
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
