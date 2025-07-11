@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
@@ -99,6 +100,17 @@ func NewTopicAccess(topic, access string) (*TopicAccess, error) {
 	}
 }
 
+func ParseTopicAccess(access *TopicAccess) (topic, role string, err error) {
+	switch access.Operation {
+	case kafka.ACLOperationAll:
+		return access.Topic, consts.READ_WRITE_ACCESS, nil
+	case kafka.ACLOperationRead:
+		return access.Topic, consts.READ_ONLY_ACCESS, nil
+	default:
+		return "", "", errors.New("unknown access")
+	}
+}
+
 func (kc *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []*TopicAccess) (err error) {
 	log := log.FromContext(ctx)
 
@@ -116,12 +128,11 @@ func (kc *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []*
 		}
 		bindingFilters = append(bindingFilters, aclsToDelete)
 	}
-	res, err := kc.AdminClient.DeleteACLs(ctx, bindingFilters)
+	_, err = kc.AdminClient.DeleteACLs(ctx, bindingFilters)
 	if err != nil {
 		log.Error(err, "Couldn't remove ACLs")
 		return err
 	}
-	log.Info(fmt.Sprintf("%v", res))
 	return nil
 }
 
@@ -142,12 +153,32 @@ func (kc *KafkaConfluent) CreateACL(ctx context.Context, user string, access []*
 		}
 		bindings = append(bindings, binding)
 	}
-	res, err := kc.AdminClient.CreateACLs(ctx, bindings)
+	_, err = kc.AdminClient.CreateACLs(ctx, bindings)
 	if err != nil {
 		log.Error(err, "Couldn't create ACLs")
 		return err
 	}
 
-	log.Info(fmt.Sprintf("%v", res))
 	return nil
+}
+
+// ListTopics implements KafkaImpl.
+func (kc *KafkaConfluent) ListTopics(ctx context.Context, hideInternal bool) ([]string, error) {
+	log := log.FromContext(ctx)
+	metadata, err := kc.AdminClient.GetMetadata(nil, true, 30)
+	if err != nil {
+		log.Error(err, "Couldn't get metadata")
+		return nil, err
+	}
+	out := []string{}
+	for _, topic := range metadata.Topics {
+		if hideInternal {
+			if strings.HasPrefix(topic.Topic, "__") {
+				continue
+			}
+		}
+		out = append(out, topic.Topic)
+	}
+
+	return out, nil
 }

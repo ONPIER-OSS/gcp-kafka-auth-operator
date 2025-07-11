@@ -62,8 +62,7 @@ func main() {
 	var projectID string
 	var region string
 	var kafkaCluster string
-	var readWriteRole string
-	var readOnlyRole string
+	var clientRole string
 	var adminUserEmail string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
@@ -79,8 +78,7 @@ func main() {
 	flag.StringVar(&projectID, "gcp-project-id", "0", "The ID of the google project.")
 	flag.StringVar(&region, "region", "europe-west3", "A region where the kafka cluster is deployed.")
 	flag.StringVar(&kafkaCluster, "kafka-cluster", "", "The name of the kafka cluster.")
-	flag.StringVar(&readWriteRole, "read-write-role", "roles/managedkafka.client", "ID of the role for read write access.")
-	flag.StringVar(&readOnlyRole, "read-only-role", "roles/managedkafka.viewer", "ID of the role for read only access.")
+	flag.StringVar(&clientRole, "client-role", "roles/managedkafka.client", "ID of the role for kafka client access.")
 	flag.StringVar(&adminUserEmail, "admin-user-email", "", "An email of the admin service account")
 	opts := zap.Options{
 		Development: true,
@@ -164,10 +162,10 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 		Opts: &controller.KafkaUserReconcilerOpts{
-			GoogleProject: projectID,
-			ReadOnlyRole:  readOnlyRole,
-			ReadWriteRole: readWriteRole,
-			KafkaInstance: kafkaInstance,
+			GoogleProject:  projectID,
+			ClientRole:     clientRole,
+			KafkaInstance:  kafkaInstance,
+			AdminUserEmail: adminUserEmail,
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "User")

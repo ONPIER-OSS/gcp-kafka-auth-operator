@@ -4,6 +4,11 @@ import "context"
 
 type KafkaDummy struct{}
 
+// ListTopics implements KafkaImpl.
+func (k *KafkaDummy) ListTopics(ctx context.Context, _ bool) ([]string, error) {
+	panic("unimplemented")
+}
+
 func NewKafkaDummy() KafkaImpl {
 	return &KafkaDummy{}
 }
