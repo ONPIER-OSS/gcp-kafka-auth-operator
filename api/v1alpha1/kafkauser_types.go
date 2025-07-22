@@ -70,3 +70,17 @@ type KafkaUserList struct {
 func init() {
 	SchemeBuilder.Register(&KafkaUser{}, &KafkaUserList{})
 }
+
+func (user *KafkaUser) DoesHaveAccess(topic string) bool {
+	for _, access := range user.Status.TopicAccessApplied {
+		if access.Topic == topic {
+			return true
+		}
+	}
+	for _, access := range user.Spec.TopicAccess {
+		if access.Topic == topic {
+			return true
+		}
+	}
+	return false
+}

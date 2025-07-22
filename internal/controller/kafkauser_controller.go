@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -33,6 +32,7 @@ import (
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/helpers"
 	kafkawrap "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/googleapi"
 	iam "google.golang.org/api/iam/v1"
@@ -56,10 +56,10 @@ type KafkaUserReconciler struct {
 
 type KafkaUserReconcilerOpts struct {
 	// The google project ID
-	GoogleProject string
-	ReadWriteRole string
-	ReadOnlyRole  string
-	KafkaInstance kafkawrap.KafkaImpl
+	GoogleProject  string
+	ClientRole     string
+	KafkaInstance  kafkawrap.KafkaImpl
+	AdminUserEmail string
 }
 
 // +kubebuilder:rbac:groups=gcp-kafka.k8s.onpier.de,resources=kafkausers,verbs=get;list;watch;create;update;patch;delete
@@ -91,8 +91,11 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Update object status always when function exit abnormally or through a panic.
 	defer func() {
-		if err := r.Status().Update(ctx, userCR); err != nil {
-			log.Error(err, "failed to update status")
+		if err := r.updateStatus(ctx, userCR); err != nil {
+			log.Error(err, "Failed to update the user status")
+		}
+		if err := r.updateObject(ctx, userCR); err != nil {
+			log.Error(err, "Failed to update the user object")
 		}
 	}()
 
@@ -101,6 +104,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcileResult, err
 	}
 
+	log.Info("Reconciliation is successful")
 	return ctrl.Result{}, nil
 }
 
@@ -132,9 +136,6 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 		userCR.GetFinalizers(),
 		consts.GCP_SERVICE_ACCOUNT_FINALIZER,
 	))
-	if err := r.Update(ctx, userCR); err != nil {
-		return err
-	}
 
 	sa, err := getServiceAccount(ctx, r.Opts.GoogleProject, gcpServiceAccountName, 10)
 	if err != nil {
@@ -143,11 +144,6 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	}
 
 	userCR.Status.SAEmail = sa.Email
-	if err := r.Status().Update(ctx, userCR); err != nil {
-		log.Error(err, "Couldn't update the userCR status")
-		return err
-	}
-
 	k8sServiceAccountName := fmt.Sprintf("%s/%s", userCR.GetNamespace(), userCR.Spec.ServiceAccountName)
 
 	if err := addWorkloadIdentityBinding(ctx, r.Opts.GoogleProject, k8sServiceAccountName, sa.Name); err != nil {
@@ -155,7 +151,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 		return err
 	}
 
-	if err := addKafkaIAMBinding(ctx, userCR.Spec.ClusterAccess, r.Opts.GoogleProject, r.Opts.ReadOnlyRole, r.Opts.ReadWriteRole, sa.Email); err != nil {
+	if err := addKafkaIAMBinding(ctx, r.Opts.GoogleProject, r.Opts.ClientRole, sa.Email); err != nil {
 		log.Error(err, "Couldn't add a kafka binding to the project")
 		return err
 	}
@@ -164,9 +160,6 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 		userCR.GetFinalizers(),
 		consts.KAFKA_IAM_BINDING_FINALIZER,
 	))
-	if err := r.Update(ctx, userCR); err != nil {
-		return err
-	}
 
 	k8sSA := &corev1.ServiceAccount{}
 
@@ -189,26 +182,17 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 		userCR.GetFinalizers(),
 		consts.K8S_SERVICE_ACCOUNT_FINALIZER,
 	))
-	if err := r.Update(ctx, userCR); err != nil {
-		return err
-	}
 
-	if len(userCR.Spec.ClusterAccess) == 0 {
-		if err := r.updateACLs(ctx, userCR); err != nil {
-			log.Error(err, "Couldn't update ACLs")
-			return err
-		}
+	if err := r.updateACLs(ctx, userCR); err != nil {
+		log.Error(err, "Couldn't update ACLs")
+		return err
 	}
 
 	userCR.SetFinalizers(helpers.SliceAppendIfMissing(
 		userCR.GetFinalizers(),
 		consts.KAFKA_ACLS_FINALIZER,
 	))
-	if err := r.Update(ctx, userCR); err != nil {
-		return err
-	}
 
-	userCR.Status.TopicAccessApplied = userCR.Spec.TopicAccess
 	userCR.Status.Ready = true
 	return nil
 }
@@ -237,10 +221,6 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		userCR.GetFinalizers(),
 		consts.GCP_SERVICE_ACCOUNT_FINALIZER,
 	))
-	if err := r.Update(ctx, userCR); err != nil {
-		return err
-	}
-
 	if err := deleteKafkaIAMBinding(ctx, r.Opts.GoogleProject, userCR.Status.SAEmail); err != nil {
 		log.Error(err, "Couldn't add a kafka binding to the project")
 		return err
@@ -250,9 +230,6 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		userCR.GetFinalizers(),
 		consts.KAFKA_IAM_BINDING_FINALIZER,
 	))
-	if err := r.Update(ctx, userCR); err != nil {
-		return err
-	}
 
 	k8sSA := &corev1.ServiceAccount{}
 
@@ -280,9 +257,6 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		userCR.GetFinalizers(),
 		consts.K8S_SERVICE_ACCOUNT_FINALIZER,
 	))
-	if err := r.Update(ctx, userCR); err != nil {
-		return err
-	}
 
 	if len(userCR.Spec.ClusterAccess) == 0 {
 		if err := r.updateACLs(ctx, userCR); err != nil {
@@ -295,9 +269,6 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		userCR.GetFinalizers(),
 		consts.KAFKA_ACLS_FINALIZER,
 	))
-	if err := r.Update(ctx, userCR); err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -337,12 +308,38 @@ func findAccessDiff(first, second []*kafkawrap.TopicAccess) (result []*kafkawrap
 
 func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) (err error) {
 	log := log.FromContext(ctx)
+	var desiredAccess []*kafkawrap.TopicAccess
 
-	desiredAccess, err := castAccessToKafkaFormat(ctx, userCR.Spec.TopicAccess)
-	if err != nil {
-		return err
+	if len(userCR.Spec.ClusterAccess) > 0 {
+		topics, err := r.Opts.KafkaInstance.ListTopics(ctx, true)
+		if err != nil {
+			return err
+		}
+		log.Info("Got all the topics from the kafka", "amount", len(topics))
+		for _, topic := range topics {
+			access, err := kafkawrap.NewTopicAccess(topic, userCR.Spec.ClusterAccess)
+			if err != nil {
+				return err
+			}
+			desiredAccess = append(desiredAccess, access)
+		}
+	} else {
+		desiredAccess, err = castAccessToKafkaFormat(ctx, userCR.Spec.TopicAccess)
+		if err != nil {
+			return err
+		}
+		log.Info("Desired amount of ACLs", "amount", len(desiredAccess))
 	}
-	log.Info("Desired amount of ACLs", "amount", len(desiredAccess))
+
+	// Append the operator user to every topic, so it doesn't lose access
+	for _, topic := range desiredAccess {
+		if err := r.Opts.KafkaInstance.CreateACL(ctx, r.Opts.AdminUserEmail, []*kafkawrap.TopicAccess{{
+			Topic:     topic.Topic,
+			Operation: kafka.ACLOperationAll,
+		}}); err != nil {
+			return err
+		}
+	}
 
 	currentAccess, err := castAccessToKafkaFormat(ctx, userCR.Status.TopicAccessApplied)
 	if err != nil {
@@ -367,6 +364,20 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 			return err
 		}
 	}
+
+	appliedTopics := []*gcpkafkav1alpha1.TopicAccess{}
+	for _, access := range desiredAccess {
+		topic, role, err := kafkawrap.ParseTopicAccess(access)
+		if err != nil {
+			return err
+		}
+		status := gcpkafkav1alpha1.TopicAccess{
+			Topic: topic,
+			Role:  role,
+		}
+		appliedTopics = append(appliedTopics, &status)
+	}
+	userCR.Status.TopicAccessApplied = appliedTopics
 	return nil
 }
 
@@ -507,8 +518,7 @@ func addWorkloadIdentityBinding(
 
 func addKafkaIAMBinding(
 	ctx context.Context,
-	clusterAccess string,
-	projectID, readOnlyRole, readWriteRole, serviceAccountEmail string,
+	projectID, clientRole, serviceAccountEmail string,
 ) error {
 	log := log.FromContext(ctx)
 	log.Info("Adding the kafka IAM binding")
@@ -539,51 +549,23 @@ func addKafkaIAMBinding(
 	}
 	updatedPolicy := cleanUpPolicy(ctx, serviceAccountEmail, rawPolicy)
 
-	if len(clusterAccess) > 0 {
-		var clusterRole string
-		switch clusterAccess {
-		case consts.READ_ONLY_ACCESS:
-			clusterRole = readOnlyRole
-		case consts.READ_WRITE_ACCESS:
-			clusterRole = readWriteRole
-		default:
-			err := errors.New("unsupported access type")
-			log.Error(err, "Unsupported access type", "type", clusterAccess)
-			return err
+	member := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
+	added := false
+
+	for _, binding := range updatedPolicy.Bindings {
+		// Always add a readWriteRole, becase the real access is not managed by ACS
+		if binding.Role == clientRole {
+			log.Info("Adding a new member to a role", "member", serviceAccountEmail, "role", clientRole)
+			binding.Members = append(binding.Members, member)
+			added = true
 		}
-		added := false
-		member := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
-		for _, binding := range updatedPolicy.Bindings {
-			if binding.Role == clusterRole {
-				binding.Members = append(binding.Members, member)
-				added = true
-			}
-		}
-		if !added {
-			log.Info("No existing binding found, creating a new one", "role", clusterRole)
-			updatedPolicy.Bindings = append(updatedPolicy.Bindings, &iampb.Binding{
-				Role:    clusterRole,
-				Members: []string{member},
-			})
-		}
-	} else {
-		log.Info("Cluster access is disabled, roles will be managed by ACLs")
-		member := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
-		added := false
-		for _, binding := range updatedPolicy.Bindings {
-			if binding.Role == readWriteRole {
-				log.Info("Adding a new member to a role", "member", serviceAccountEmail, "role", readWriteRole)
-				binding.Members = append(binding.Members, member)
-				added = true
-			}
-		}
-		if !added {
-			log.Info("No existing binding found, creating a new one", "role", readWriteRole)
-			updatedPolicy.Bindings = append(updatedPolicy.Bindings, &iampb.Binding{
-				Role:    readWriteRole,
-				Members: []string{member},
-			})
-		}
+	}
+	if !added {
+		log.Info("No existing binding found, creating a new one", "role", clientRole)
+		updatedPolicy.Bindings = append(updatedPolicy.Bindings, &iampb.Binding{
+			Role:    clientRole,
+			Members: []string{member},
+		})
 	}
 
 	log.Info("Updating bindings")
@@ -719,4 +701,30 @@ func TestCheckCleanupPolicies(t *testing.T) {
 	assert.Equal(t, []string{"check@check.check"}, newPolicy.Bindings[0])
 	assert.Equal(t, []string{}, newPolicy.Bindings[1])
 	assert.Equal(t, []string{"check@check.check"}, newPolicy.Bindings[2])
+}
+
+func (r *KafkaUserReconciler) updateStatus(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {
+	log := log.FromContext(ctx)
+	if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
+		log.Error(err, "Failed to get an updated object")
+		return err
+	}
+	if err := r.Status().Update(ctx, userCR); err != nil {
+		log.Error(err, "failed to update status")
+		return err
+	}
+	return nil
+}
+
+func (r *KafkaUserReconciler) updateObject(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {
+	log := log.FromContext(ctx)
+	if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
+		log.Error(err, "Failed to get an updated object")
+		return err
+	}
+	if err := r.Update(ctx, userCR); err != nil {
+		log.Error(err, "failed to update status")
+		return err
+	}
+	return nil
 }

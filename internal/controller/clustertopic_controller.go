@@ -49,7 +49,7 @@ type ClusterTopicReconciler struct {
 func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
 	// TODO: Should be configurable
-	log.Info("Topic creation is not production ready yet")
+	log.Info("Topic creation is not production ready yet", "request", req.String())
 	reconcilePeriod := time.Minute
 	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
 
@@ -57,7 +57,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	err := r.Get(ctx, req.NamespacedName, topicCR)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return reconcileResult, nil
+			return ctrl.Result{}, nil
 		}
 		return reconcileResult, err
 	}
@@ -90,6 +90,11 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			log.Error(err, "failed to update status")
 		}
 	}()
+	defer func() {
+		if err := r.updateUserCRs(ctx, topicCR.Name); err != nil {
+			log.Error(err, "Couldn't notify users about changes")
+		}
+	}()
 	if err := r.KafkaInstance.CreateTopic(
 		ctx,
 		topicCR.GetName(),
@@ -118,9 +123,33 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 			return reconcileResult, err
 		}
 	}
+
 	topicCR.Status.Ready = true
 
 	return ctrl.Result{}, nil
+}
+
+func (r *ClusterTopicReconciler) updateUserCRs(ctx context.Context, topicName string) error {
+	kafkaUsers := &gcpkafkav1alpha1.KafkaUserList{}
+	if err := r.List(ctx, kafkaUsers); err != nil {
+		return err
+	}
+	for _, user := range kafkaUsers.Items {
+		if len(user.Spec.ClusterAccess) > 0 {
+			user.Status.Ready = false
+			if err := r.Status().Update(ctx, &user); err != nil {
+				return err
+			}
+		} else {
+			if user.DoesHaveAccess(topicName) {
+				user.Status.Ready = false
+				if err := r.Status().Update(ctx, &user); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
