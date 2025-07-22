@@ -91,7 +91,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}()
 	defer func() {
-		if err := r.notifyUsers(ctx, topicCR.Name); err != nil {
+		if err := r.updateUserCRs(ctx, topicCR.Name); err != nil {
 			log.Error(err, "Couldn't notify users about changes")
 		}
 	}()
@@ -129,7 +129,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-func (r *ClusterTopicReconciler) notifyUsers(ctx context.Context, topicName string) error {
+func (r *ClusterTopicReconciler) updateUserCRs(ctx context.Context, topicName string) error {
 	kafkaUsers := &gcpkafkav1alpha1.KafkaUserList{}
 	if err := r.List(ctx, kafkaUsers); err != nil {
 		return err
