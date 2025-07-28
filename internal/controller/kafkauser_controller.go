@@ -89,19 +89,27 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
+	h := sha256.New()
+	cfgAsString := fmt.Sprintf("%v", userCR.Spec)
+	h.Write([]byte(cfgAsString))
+	hash := h.Sum(nil)
+	if userCR.Status.ConfigHash != string(hash) {
+		userCR.Status.ConfigHash = string(hash)
+		userCR.Status.Ready = false
+	}
+
 	// Update object status always when function exit abnormally or through a panic.
-	defer func() {
+	if !userCR.Status.Ready {
+		if err := r.createOrUpdate(ctx, userCR); err != nil {
+			log.Error(err, "Reconciliation failed")
+			return reconcileResult, err
+		}
 		if err := r.updateStatus(ctx, userCR); err != nil {
 			log.Error(err, "Failed to update the user status")
 		}
 		if err := r.updateObject(ctx, userCR); err != nil {
 			log.Error(err, "Failed to update the user object")
 		}
-	}()
-
-	if err := r.createOrUpdate(ctx, userCR); err != nil {
-		log.Error(err, "Reconciliation failed")
-		return reconcileResult, err
 	}
 
 	log.Info("Reconciliation is successful")
@@ -705,12 +713,12 @@ func TestCheckCleanupPolicies(t *testing.T) {
 
 func (r *KafkaUserReconciler) updateStatus(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {
 	log := log.FromContext(ctx)
-	if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
-		log.Error(err, "Failed to get an updated object")
-		return err
-	}
 	if err := r.Status().Update(ctx, userCR); err != nil {
 		log.Error(err, "failed to update status")
+		return err
+	}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
+		log.Error(err, "Failed to get an updated object")
 		return err
 	}
 	return nil
@@ -718,12 +726,12 @@ func (r *KafkaUserReconciler) updateStatus(ctx context.Context, userCR *gcpkafka
 
 func (r *KafkaUserReconciler) updateObject(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {
 	log := log.FromContext(ctx)
-	if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
-		log.Error(err, "Failed to get an updated object")
-		return err
-	}
 	if err := r.Update(ctx, userCR); err != nil {
 		log.Error(err, "failed to update status")
+		return err
+	}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
+		log.Error(err, "Failed to get an updated object")
 		return err
 	}
 	return nil
