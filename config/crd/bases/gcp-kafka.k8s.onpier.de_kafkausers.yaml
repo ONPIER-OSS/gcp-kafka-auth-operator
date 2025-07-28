@@ -71,6 +71,8 @@ spec:
           status:
             description: KafkaUserStatus defines the observed state of User.
             properties:
+              configHash:
+                type: string
               ready:
                 type: boolean
               saEmail:
@@ -88,6 +90,7 @@ spec:
                   type: object
                 type: array
             required:
+            - configHash
             - ready
             type: object
         type: object
