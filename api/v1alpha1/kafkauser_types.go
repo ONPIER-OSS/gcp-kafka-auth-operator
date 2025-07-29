@@ -43,7 +43,7 @@ type KafkaUserStatus struct {
 	Ready              bool           `json:"ready"`
 	TopicAccessApplied []*TopicAccess `json:"topicAccessApplied,omitempty"`
 	SAEmail            string         `json:"saEmail,omitempty"`
-	ConfigHash         string         `json:"configHash,omitmepty"`
+	ConfigHash         string         `json:"configHash,omitempty"`
 }
 
 // +kubebuilder:object:root=true
