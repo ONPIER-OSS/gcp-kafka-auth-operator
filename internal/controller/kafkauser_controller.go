@@ -182,6 +182,9 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	if err != nil {
 		return err
 	}
+	if k8sSA.Annotations == nil {
+		k8sSA.Annotations = map[string]string{}
+	}
 	k8sSA.Annotations["iam.gke.io/gcp-service-account"] = sa.Email
 
 	err = r.Update(ctx, k8sSA)
