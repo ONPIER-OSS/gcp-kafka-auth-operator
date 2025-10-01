@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -159,13 +160,15 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&controller.KafkaUserReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("kafkauser-controller"),
 		Opts: &controller.KafkaUserReconcilerOpts{
-			GoogleProject:  projectID,
-			ClientRole:     clientRole,
-			KafkaInstance:  kafkaInstance,
-			AdminUserEmail: adminUserEmail,
+			GoogleProject:   projectID,
+			ClientRole:      clientRole,
+			KafkaInstance:   kafkaInstance,
+			AdminUserEmail:  adminUserEmail,
+			ReconcilePeriod: time.Minute,
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "User")

@@ -73,7 +73,11 @@ spec:
             properties:
               configHash:
                 type: string
+              error:
+                type: string
               ready:
+                type: boolean
+              reconciliationActive:
                 type: boolean
               saEmail:
                 type: string
