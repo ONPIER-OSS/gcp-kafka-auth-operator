@@ -105,7 +105,10 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcileResultRepeat, nil
 	}
 	isReconcile := false
-	if userCR.Status.ConfigHash != hash {
+
+	if !userCR.Status.Ready {
+		isReconcile = true
+	} else if userCR.Status.ConfigHash != hash {
 		log.Info("Spec was changed", "oldHash", userCR.Status.ConfigHash, "newHash", hash)
 		isReconcile = true
 	}
