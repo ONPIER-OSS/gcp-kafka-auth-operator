@@ -40,10 +40,12 @@ type ClusterAccess struct {
 
 // KafkaUserStatus defines the observed state of User.
 type KafkaUserStatus struct {
-	Ready              bool           `json:"ready"`
-	TopicAccessApplied []*TopicAccess `json:"topicAccessApplied,omitempty"`
-	SAEmail            string         `json:"saEmail,omitempty"`
-	ConfigHash         string         `json:"configHash,omitempty"`
+	Ready                bool           `json:"ready"`
+	TopicAccessApplied   []*TopicAccess `json:"topicAccessApplied,omitempty"`
+	SAEmail              string         `json:"saEmail,omitempty"`
+	ConfigHash           string         `json:"configHash,omitempty"`
+	Error                string         `json:"error,omitempty"`
+	ReconciliationActive bool           `json:"reconciliationActive,omitempty"`
 }
 
 // +kubebuilder:object:root=true
