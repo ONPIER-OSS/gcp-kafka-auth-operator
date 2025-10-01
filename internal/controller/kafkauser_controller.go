@@ -829,10 +829,6 @@ func (r *KafkaUserReconciler) updateObject(ctx context.Context, userCR *gcpkafka
 	return nil
 }
 
-func (r *KafkaUserReconciler) addEvent(userCR *gcpkafkav1alpha1.KafkaUser, event string) {
-	r.Recorder.Event(userCR, "Normal", "Object Update", event)
-}
-
 func getSpecHash(userSpec *gcpkafkav1alpha1.KafkaUserSpec) (string, error) {
 	yaml, err := yaml.Marshal(userSpec)
 	if err != nil {
