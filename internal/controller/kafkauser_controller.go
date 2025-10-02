@@ -50,6 +50,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
+const ANNOTATION_GKE_EMAIL = "iam.gke.io/gcp-service-account"
+
 // KafkaUserReconciler reconciles a User object
 type KafkaUserReconciler struct {
 	client.Client
@@ -71,6 +73,7 @@ type KafkaUserReconcilerOpts struct {
 // +kubebuilder:rbac:groups=gcp-kafka.k8s.onpier.de,resources=kafkausers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=gcp-kafka.k8s.onpier.de,resources=kafkausers/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=watch;update;list
+// +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
 
 func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -115,10 +118,12 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	// Update object status always when function exit abnormally or through a panic.
 	if isReconcile {
+		log.Info("Reconciling the user object")
 		userCR.Status.ConfigHash = hash
 		userCR.Status.Ready = false
 		userCR.Status.ReconciliationActive = true
 		defer func() {
+			log.Info("Status on defer", "status", userCR.Status.Ready)
 			userCR.Status.ReconciliationActive = false
 			if err := r.updateObject(ctx, userCR); err != nil {
 				log.Error(err, "Couldn't update an object on defer")
@@ -133,12 +138,6 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if err := r.createOrUpdate(ctx, userCR); err != nil {
 			log.Error(err, "Reconciliation failed")
 			return reconcileResultRepeat, err
-		}
-		if err := r.updateStatus(ctx, userCR); err != nil {
-			log.Error(err, "Failed to update the user status")
-		}
-		if err := r.updateObject(ctx, userCR); err != nil {
-			log.Error(err, "Failed to update the user object")
 		}
 	}
 
@@ -173,9 +172,13 @@ func (r *KafkaUserReconciler) findKafkaUserForServiceAccount(ctx context.Context
 
 	for _, user := range kafkaUsers.Items {
 		if user.Spec.ServiceAccountName == name {
-			user.Status.Ready = false
-			if err := r.updateStatus(ctx, &user); err != nil {
-				log.Error(err, "Couldn't update kafka user status")
+			email, ok := sa.GetAnnotations()[ANNOTATION_GKE_EMAIL]
+			// If annotation is not set, reconcile the user
+			if !ok || email != user.Status.SAEmail {
+				user.Status.Ready = false
+				if err := r.updateStatus(ctx, &user); err != nil {
+					log.Error(err, "Couldn't update kafka user status")
+				}
 			}
 		}
 	}
@@ -260,7 +263,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	if k8sSA.Annotations == nil {
 		k8sSA.Annotations = map[string]string{}
 	}
-	k8sSA.Annotations["iam.gke.io/gcp-service-account"] = sa.Email
+	k8sSA.Annotations[ANNOTATION_GKE_EMAIL] = sa.Email
 
 	err = r.Update(ctx, k8sSA)
 	if err != nil {
@@ -348,7 +351,7 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 			return err
 		}
 	} else {
-		delete(k8sSA.Annotations, "iam.gke.io/gcp-service-account")
+		delete(k8sSA.Annotations, ANNOTATION_GKE_EMAIL)
 		err = r.Update(ctx, k8sSA)
 		if err != nil {
 			log.Error(err, "Couldn't annotate a service account", "name", k8sSA.GetName())
