@@ -116,10 +116,8 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		log.Info("Reconciling the user object")
 		userCR.Status.ConfigHash = hash
 		userCR.Status.Ready = false
-		userCR.Status.ReconciliationActive = true
 		defer func() {
 			log.Info("Status on defer", "status", userCR.Status.Ready)
-			userCR.Status.ReconciliationActive = false
 			if err := r.updateStatus(ctx, userCR); err != nil {
 				log.Error(err, "Couldn't update an object on defer")
 			}
@@ -195,6 +193,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	if err := createServiceAccount(ctx, r.Opts.GoogleProject, gcpServiceAccountName); err != nil {
 		errMsg := "Couldn't create a GCP service account"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
 		return err
 	}
@@ -211,6 +210,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	if err != nil {
 		errMsg := "Couldn't get a GCP service account"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
 		return err
 	}
@@ -231,6 +231,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	if err := addKafkaIAMBinding(ctx, r.Opts.GoogleProject, r.Opts.ClientRole, sa.Email); err != nil {
 		errMsg := "Couldn't add a kafka binding to the project"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
 		return err
 	}
@@ -252,6 +253,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	if err != nil {
 		errMsg := "Couldn't get a k8s service account, make sure it's created"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
 		return err
 	}
@@ -264,6 +266,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	if err != nil {
 		errMsg := "Couldn't annotate a service account"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+		userCR.Status.Error = errMsg
 		log.Error(err, errMsg, "name", k8sSA.GetName())
 		return err
 	}
@@ -279,6 +282,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	if err := r.updateACLs(ctx, userCR); err != nil {
 		errMsg := "Couldn't update ACLs"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
 		return err
 	}
