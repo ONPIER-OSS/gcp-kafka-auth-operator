@@ -191,7 +191,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 
 	// Trying to create a service account
 	if err := createServiceAccount(ctx, r.Opts.GoogleProject, gcpServiceAccountName); err != nil {
-		errMsg := "Couldn't create a GCP service account"
+		errMsg := "Could not create a GCP service account"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
@@ -208,7 +208,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 
 	sa, err := getServiceAccount(ctx, r.Opts.GoogleProject, gcpServiceAccountName, 10)
 	if err != nil {
-		errMsg := "Couldn't get a GCP service account"
+		errMsg := "Could not get a GCP service account"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
@@ -222,14 +222,14 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 
 	k8sServiceAccountName := fmt.Sprintf("%s/%s", userCR.GetNamespace(), userCR.Spec.ServiceAccountName)
 	if err := addWorkloadIdentityBinding(ctx, r.Opts.GoogleProject, k8sServiceAccountName, sa.Name); err != nil {
-		errMsg := "Couldn't add a workload identity binding"
+		errMsg := "Could not add a workload identity binding"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		log.Error(err, errMsg)
 		return err
 	}
 
 	if err := addKafkaIAMBinding(ctx, r.Opts.GoogleProject, r.Opts.ClientRole, sa.Email); err != nil {
-		errMsg := "Couldn't add a kafka binding to the project"
+		errMsg := "Could not add a kafka binding to the project"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
@@ -251,7 +251,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 		Name:      userCR.Spec.ServiceAccountName,
 	}, k8sSA)
 	if err != nil {
-		errMsg := "Couldn't get a k8s service account, make sure it's created"
+		errMsg := "Could not get a k8s service account, make sure it is created"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
@@ -264,7 +264,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 
 	err = r.Update(ctx, k8sSA)
 	if err != nil {
-		errMsg := "Couldn't annotate a service account"
+		errMsg := "Couldn ot annotate a service account"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		userCR.Status.Error = errMsg
 		log.Error(err, errMsg, "name", k8sSA.GetName())
@@ -280,7 +280,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	}
 
 	if err := r.updateACLs(ctx, userCR); err != nil {
-		errMsg := "Couldn't update ACLs"
+		errMsg := "Could not update ACLs"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		userCR.Status.Error = errMsg
 		log.Error(err, errMsg)
