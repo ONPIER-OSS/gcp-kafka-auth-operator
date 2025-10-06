@@ -73,7 +73,7 @@ type KafkaUserReconcilerOpts struct {
 // +kubebuilder:rbac:groups=gcp-kafka.k8s.onpier.de,resources=kafkausers/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=gcp-kafka.k8s.onpier.de,resources=kafkausers/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=watch;update;list
-// +kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 
 func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
@@ -91,10 +91,10 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcileResultRepeat, err
 	}
 
-	if userCR.Status.ReconciliationActive {
-		log.Info("Another reconciliation is in progress, skipping ...")
-		return reconcileResultNoRepeat, nil
-	}
+	//if userCR.Status.ReconciliationActive {
+	//		log.Info("Another reconciliation is in progress, skipping ...")
+	//		return reconcileResultNoRepeat, nil
+	//}
 
 	if userCR.DeletionTimestamp != nil {
 		if err := r.delete(ctx, userCR); err != nil {
@@ -125,17 +125,19 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		defer func() {
 			log.Info("Status on defer", "status", userCR.Status.Ready)
 			userCR.Status.ReconciliationActive = false
-			if err := r.updateObject(ctx, userCR); err != nil {
+			if err := r.updateStatus(ctx, userCR); err != nil {
 				log.Error(err, "Couldn't update an object on defer")
 			}
 		}()
 
-		if err := r.updateObject(ctx, userCR); err != nil {
+		if err := r.updateStatus(ctx, userCR); err != nil {
 			return reconcileResultRepeat, err
 		}
 
 		log.Info("User is not ready")
 		if err := r.createOrUpdate(ctx, userCR); err != nil {
+			r.Recorder.Event(userCR, corev1.EventTypeNormal, "Test", "test test")
+			r.Recorder.Event(userCR, corev1.EventTypeWarning, "Test", "test test")
 			log.Error(err, "Reconciliation failed")
 			return reconcileResultRepeat, err
 		}
@@ -199,7 +201,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	// Trying to create a service account
 	if err := createServiceAccount(ctx, r.Opts.GoogleProject, gcpServiceAccountName); err != nil {
 		errMsg := "Couldn't create a GCP service account"
-		r.Recorder.Event(userCR, "Warning", "ReconciliationError", errMsg)
+		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		log.Error(err, errMsg)
 		return err
 	}
@@ -215,7 +217,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	sa, err := getServiceAccount(ctx, r.Opts.GoogleProject, gcpServiceAccountName, 10)
 	if err != nil {
 		errMsg := "Couldn't get a GCP service account"
-		r.Recorder.Event(userCR, "Warning", "ReconciliationError", errMsg)
+		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		log.Error(err, errMsg)
 		return err
 	}
@@ -228,14 +230,14 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	k8sServiceAccountName := fmt.Sprintf("%s/%s", userCR.GetNamespace(), userCR.Spec.ServiceAccountName)
 	if err := addWorkloadIdentityBinding(ctx, r.Opts.GoogleProject, k8sServiceAccountName, sa.Name); err != nil {
 		errMsg := "Couldn't add a workload identity binding"
-		r.Recorder.Event(userCR, "Warning", "ReconciliationError", errMsg)
+		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		log.Error(err, errMsg)
 		return err
 	}
 
 	if err := addKafkaIAMBinding(ctx, r.Opts.GoogleProject, r.Opts.ClientRole, sa.Email); err != nil {
 		errMsg := "Couldn't add a kafka binding to the project"
-		r.Recorder.Event(userCR, "Warning", "ReconciliationError", errMsg)
+		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		log.Error(err, errMsg)
 		return err
 	}
@@ -256,7 +258,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	}, k8sSA)
 	if err != nil {
 		errMsg := "Couldn't get a k8s service account, make sure it's created"
-		r.Recorder.Event(userCR, "Warning", "ReconciliationError", errMsg)
+		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		log.Error(err, errMsg)
 		return err
 	}
@@ -268,7 +270,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 	err = r.Update(ctx, k8sSA)
 	if err != nil {
 		errMsg := "Couldn't annotate a service account"
-		r.Recorder.Event(userCR, "Warning", "ReconciliationError", errMsg)
+		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		log.Error(err, errMsg, "name", k8sSA.GetName())
 		return err
 	}
@@ -283,7 +285,7 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 
 	if err := r.updateACLs(ctx, userCR); err != nil {
 		errMsg := "Couldn't update ACLs"
-		r.Recorder.Event(userCR, "Warning", "ReconciliationError", errMsg)
+		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		log.Error(err, errMsg)
 		return err
 	}
