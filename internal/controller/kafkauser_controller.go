@@ -91,11 +91,6 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcileResultRepeat, err
 	}
 
-	//if userCR.Status.ReconciliationActive {
-	//		log.Info("Another reconciliation is in progress, skipping ...")
-	//		return reconcileResultNoRepeat, nil
-	//}
-
 	if userCR.DeletionTimestamp != nil {
 		if err := r.delete(ctx, userCR); err != nil {
 			return reconcileResultRepeat, err
@@ -136,8 +131,6 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		log.Info("User is not ready")
 		if err := r.createOrUpdate(ctx, userCR); err != nil {
-			r.Recorder.Event(userCR, corev1.EventTypeNormal, "Test", "test test")
-			r.Recorder.Event(userCR, corev1.EventTypeWarning, "Test", "test test")
 			log.Error(err, "Reconciliation failed")
 			return reconcileResultRepeat, err
 		}
