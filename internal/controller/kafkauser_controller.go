@@ -124,10 +124,6 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}()
 
-		if err := r.updateStatus(ctx, userCR); err != nil {
-			return reconcileResultRepeat, err
-		}
-
 		log.Info("User is not ready")
 		if err := r.createOrUpdate(ctx, userCR); err != nil {
 			log.Error(err, "Reconciliation failed")
