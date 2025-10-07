@@ -102,22 +102,23 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err != nil {
 		return reconcileResultRepeat, nil
 	}
-	isReconcile := false
 
-	if !userCR.Status.Ready {
-		isReconcile = true
-	} else if userCR.Status.ConfigHash != hash {
+	if userCR.Status.ConfigHash != hash {
 		log.Info("Spec was changed", "oldHash", userCR.Status.ConfigHash, "newHash", hash)
-		isReconcile = true
-	}
-
-	// Update object status always when function exit abnormally or through a panic.
-	if isReconcile {
-		log.Info("Reconciling the user object")
 		userCR.Status.ConfigHash = hash
 		userCR.Status.Ready = false
+		if err := r.updateStatus(ctx, userCR); err != nil {
+			log.Error(err, "Couldn't update an object on defer")
+			return reconcileResultRepeat, err
+		}
+		// Returning here, because the status change will trigger a new
+		// reconcliation and will sync the state
+		return reconcileResultNoRepeat, nil
+	}
+
+	if !userCR.Status.Ready {
+		log.Info("Reconciling the user object")
 		defer func() {
-			log.Info("Status on defer", "status", userCR.Status.Ready)
 			if err := r.updateStatus(ctx, userCR); err != nil {
 				log.Error(err, "Couldn't update an object on defer")
 			}
