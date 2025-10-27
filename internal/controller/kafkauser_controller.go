@@ -314,7 +314,7 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		log.Info("Couldn't get a service account, continuing", "error", err)
 	} else {
 		if err := deleteServiceAccount(ctx, r.Opts.GoogleProject, sa.Email); err != nil {
-			log.Error(err, "Couldn't create a service account")
+			log.Error(err, "Couldn't delete a service account")
 			return err
 		}
 	}
@@ -323,6 +323,9 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		userCR.GetFinalizers(),
 		consts.GCP_SERVICE_ACCOUNT_FINALIZER,
 	))
+	if err := r.updateObject(ctx, userCR); err != nil {
+		return err
+	}
 	if err := deleteKafkaIAMBinding(ctx, r.Opts.GoogleProject, userCR.Status.SAEmail); err != nil {
 		log.Error(err, "Couldn't add a kafka binding to the project")
 		return err
@@ -332,6 +335,9 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		userCR.GetFinalizers(),
 		consts.KAFKA_IAM_BINDING_FINALIZER,
 	))
+	if err := r.updateObject(ctx, userCR); err != nil {
+		return err
+	}
 
 	k8sSA := &corev1.ServiceAccount{}
 
@@ -359,6 +365,9 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		userCR.GetFinalizers(),
 		consts.K8S_SERVICE_ACCOUNT_FINALIZER,
 	))
+	if err := r.updateObject(ctx, userCR); err != nil {
+		return err
+	}
 
 	if len(userCR.Spec.ClusterAccess) == 0 {
 		if err := r.updateACLs(ctx, userCR); err != nil {
@@ -371,6 +380,9 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		userCR.GetFinalizers(),
 		consts.KAFKA_ACLS_FINALIZER,
 	))
+	if err := r.updateObject(ctx, userCR); err != nil {
+		return err
+	}
 
 	return nil
 }
