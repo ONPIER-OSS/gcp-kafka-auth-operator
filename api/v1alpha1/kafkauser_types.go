@@ -26,6 +26,9 @@ type KafkaUserSpec struct {
 	TopicAccess        []*TopicAccess `json:"topicAccess,omitempty"`
 	// ReadOnly or ReadWrite access to the whole cluster
 	ClusterAccess string `json:"clusterAccess,omitempty"`
+	// Permissions that must be additionally assigned to the gcp IAM
+	// For example, when an app needs to have access to redis and kafka.
+	ExtraPermissions []string `json:"extraPermissions,omitempty"`
 }
 
 type TopicAccess struct {

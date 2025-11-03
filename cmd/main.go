@@ -65,6 +65,7 @@ func main() {
 	var kafkaCluster string
 	var clientRole string
 	var adminUserEmail string
+	var extraPermissionsCM string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -81,6 +82,7 @@ func main() {
 	flag.StringVar(&kafkaCluster, "kafka-cluster", "", "The name of the kafka cluster.")
 	flag.StringVar(&clientRole, "client-role", "roles/managedkafka.client", "ID of the role for kafka client access.")
 	flag.StringVar(&adminUserEmail, "admin-user-email", "", "An email of the admin service account")
+	flag.StringVar(&extraPermissionsCM, "extra-permission-cm", "", "A name of the configmap for allowing extra permissions")
 	opts := zap.Options{
 		Development: true,
 	}

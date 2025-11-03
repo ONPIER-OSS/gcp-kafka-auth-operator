@@ -10,5 +10,5 @@ metadata:
 spec:
   serviceAccountName: topic-access
   topicAccess:
-    - topic: t1
+    - topic: test-auto-create
       role: readWrite

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -62,11 +63,12 @@ type KafkaUserReconciler struct {
 
 type KafkaUserReconcilerOpts struct {
 	// The google project ID
-	GoogleProject   string
-	ClientRole      string
-	KafkaInstance   kafkawrap.KafkaImpl
-	AdminUserEmail  string
-	ReconcilePeriod time.Duration
+	GoogleProject      string
+	ClientRole         string
+	KafkaInstance      kafkawrap.KafkaImpl
+	AdminUserEmail     string
+	ReconcilePeriod    time.Duration
+	ExtraPermissionsCM string
 }
 
 // +kubebuilder:rbac:groups=gcp-kafka.k8s.onpier.de,resources=kafkausers,verbs=get;list;watch;create;update;patch;delete
@@ -225,7 +227,29 @@ func (r *KafkaUserReconciler) createOrUpdate(ctx context.Context, userCR *gcpkaf
 		return err
 	}
 
-	if err := addKafkaIAMBinding(ctx, r.Opts.GoogleProject, r.Opts.ClientRole, sa.Email); err != nil {
+	grantedPermissions := []string{r.Opts.ClientRole}
+	if len(userCR.Spec.ExtraPermissions) > 0 {
+		allowedPermissions, err := r.getAllowedPermissions(ctx, userCR.GetName(), userCR.GetNamespace())
+		if err != nil {
+			errMsg := "Could not get the allowed permissions for setting extra ones"
+			r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+			log.Error(err, errMsg)
+			return err
+		}
+		for _, extraPermission := range userCR.Spec.ExtraPermissions {
+			log.Info("Checking if the extra permission is allowed for the user")
+			if !slices.Contains(allowedPermissions, extraPermission) {
+				err := errors.New("Extra permissions is not allowed")
+				errMsg := fmt.Sprintf("%s permissions needs to be added to allowed permissions", extraPermission)
+				r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+				log.Error(err, errMsg)
+				return err
+			}
+			grantedPermissions = append(grantedPermissions, extraPermission)
+		}
+	}
+
+	if err := addKafkaIAMBinding(ctx, r.Opts.GoogleProject, grantedPermissions, sa.Email); err != nil {
 		errMsg := "Could not add a kafka binding to the project"
 		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 		userCR.Status.Error = errMsg
@@ -495,6 +519,20 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 	return nil
 }
 
+func (r *KafkaUserReconciler) getAllowedPermissions(ctx context.Context, name, namespace string) ([]string, err) {
+	configMap := &corev1.ConfigMap{}
+	if err := r.Get(ctx, r.Opts.ExtraPermissionsCM, configMap); err != nil {
+		return nil, err
+	}
+
+	ok, data := configMap.Data[fmt.Sprintf("%s_%s", namespace, name)]
+	if !ok {
+		return []string{}
+	}
+
+	return helpers.StringToSlice(data), nil
+}
+
 func createServiceAccount(ctx context.Context, projectID, serviceAccountName string) error {
 	log := log.FromContext(ctx)
 	log.Info("Creating a service account", "name", serviceAccountName)
@@ -632,7 +670,9 @@ func addWorkloadIdentityBinding(
 
 func addKafkaIAMBinding(
 	ctx context.Context,
-	projectID, clientRole, serviceAccountEmail string,
+	projectID string,
+	roles []string,
+	serviceAccountEmail string,
 ) error {
 	log := log.FromContext(ctx)
 	log.Info("Adding the kafka IAM binding")
@@ -665,21 +705,22 @@ func addKafkaIAMBinding(
 
 	member := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
 	added := false
-
-	for _, binding := range updatedPolicy.Bindings {
-		// Always add a readWriteRole, becase the real access is not managed by ACS
-		if binding.Role == clientRole {
-			log.Info("Adding a new member to a role", "member", serviceAccountEmail, "role", clientRole)
-			binding.Members = append(binding.Members, member)
-			added = true
+	for _, role := range roles {
+		for _, binding := range updatedPolicy.Bindings {
+			// Always add a readWriteRole, becase the real access is managed by ACLs
+			if binding.Role == role {
+				log.Info("Adding a new member to a role", "member", serviceAccountEmail, "role", role)
+				binding.Members = append(binding.Members, member)
+				added = true
+			}
 		}
-	}
-	if !added {
-		log.Info("No existing binding found, creating a new one", "role", clientRole)
-		updatedPolicy.Bindings = append(updatedPolicy.Bindings, &iampb.Binding{
-			Role:    clientRole,
-			Members: []string{member},
-		})
+		if !added {
+			log.Info("No existing binding found, creating a new one", "role", role)
+			updatedPolicy.Bindings = append(updatedPolicy.Bindings, &iampb.Binding{
+				Role:    role,
+				Members: []string{member},
+			})
+		}
 	}
 
 	log.Info("Updating bindings")
