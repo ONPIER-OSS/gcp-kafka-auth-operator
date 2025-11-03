@@ -65,6 +65,8 @@ func main() {
 	var kafkaCluster string
 	var clientRole string
 	var adminUserEmail string
+	var extraPermissionsCM string
+	var extraPermissionsCMNamespace string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -81,6 +83,16 @@ func main() {
 	flag.StringVar(&kafkaCluster, "kafka-cluster", "", "The name of the kafka cluster.")
 	flag.StringVar(&clientRole, "client-role", "roles/managedkafka.client", "ID of the role for kafka client access.")
 	flag.StringVar(&adminUserEmail, "admin-user-email", "", "An email of the admin service account")
+	flag.StringVar(&extraPermissionsCM,
+		"extra-permission-cm",
+		"",
+		"A name of the configmap for allowing extra permissions",
+	)
+	flag.StringVar(&extraPermissionsCMNamespace,
+		"extra-permission-cm-namespace",
+		"",
+		"A namespace of the configmap for allowing extra permissions",
+	)
 	opts := zap.Options{
 		Development: true,
 	}
@@ -164,11 +176,13 @@ func main() {
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("kafkauser-controller"),
 		Opts: &controller.KafkaUserReconcilerOpts{
-			GoogleProject:   projectID,
-			ClientRole:      clientRole,
-			KafkaInstance:   kafkaInstance,
-			AdminUserEmail:  adminUserEmail,
-			ReconcilePeriod: time.Minute,
+			GoogleProject:               projectID,
+			ClientRole:                  clientRole,
+			KafkaInstance:               kafkaInstance,
+			AdminUserEmail:              adminUserEmail,
+			ReconcilePeriod:             time.Minute,
+			ExtraPermissionsCMNamespace: extraPermissionsCMNamespace,
+			ExtraPermissionsCM:          extraPermissionsCM,
 		},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "User")

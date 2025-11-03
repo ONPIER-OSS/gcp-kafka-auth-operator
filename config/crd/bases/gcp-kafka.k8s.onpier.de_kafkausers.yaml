@@ -51,6 +51,13 @@ spec:
               clusterAccess:
                 description: ReadOnly or ReadWrite access to the whole cluster
                 type: string
+              extraRoles:
+                description: |-
+                  Roles that must be additionally assigned to the gcp IAM
+                  For example, when an app needs to have access to redis and kafka.
+                items:
+                  type: string
+                type: array
               serviceAccountName:
                 type: string
               topicAccess:

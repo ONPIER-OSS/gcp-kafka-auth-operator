@@ -12,3 +12,5 @@ spec:
   topicAccess:
     - topic: test-auto-create
       role: readWrite
+  extraRoles:
+    - roles/storage.objectAdmin

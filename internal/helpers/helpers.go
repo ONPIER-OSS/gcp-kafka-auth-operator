@@ -1,5 +1,7 @@
 package helpers
 
+import "strings"
+
 func SliceAppendIfMissing(slice []string, s string) []string {
 	if len(slice) == 0 {
 		return append(slice, s)
@@ -22,4 +24,8 @@ func SliceRemoveItem(slice []string, s string) []string {
 		}
 	}
 	return newslice
+}
+
+func StringToSlice(input string) []string {
+	return strings.Split(input, "\n")
 }
