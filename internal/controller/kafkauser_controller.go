@@ -37,7 +37,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/googleapi"
 	iam "google.golang.org/api/iam/v1"
-	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
@@ -102,7 +101,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	hash, err := getSpecHash(userCR.Spec.DeepCopy())
+	hash, err := helpers.GetHashFromAnything(userCR.Spec.DeepCopy())
 	if err != nil {
 		return reconcileResultRepeat, nil
 	}
@@ -887,12 +886,4 @@ func (r *KafkaUserReconciler) updateObject(ctx context.Context, userCR *gcpkafka
 		return err
 	}
 	return nil
-}
-
-func getSpecHash(userSpec *gcpkafkav1alpha1.KafkaUserSpec) (string, error) {
-	yaml, err := yaml.Marshal(userSpec)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%x", sha256.Sum256(yaml)), nil
 }

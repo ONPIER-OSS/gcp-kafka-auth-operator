@@ -4,6 +4,7 @@
 resources:
 - bases/gcp-kafka.k8s.onpier.de_kafkausers.yaml
 - bases/gcp-kafka.k8s.onpier.de_clustertopics.yaml
+- bases/gcp-kafka.k8s.onpier.de_externalkafkausers.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:
