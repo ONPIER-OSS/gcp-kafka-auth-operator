@@ -37,6 +37,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
+	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/cloud"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/controller"
 	kafkawrap "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka"
 	// +kubebuilder:scaffold:imports
@@ -67,7 +68,10 @@ func main() {
 	var adminUserEmail string
 	var extraPermissionsCM string
 	var extraPermissionsCMNamespace string
+	var dummyDeployment bool
+	var dummyConfig string
 	var tlsOpts []func(*tls.Config)
+
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -92,6 +96,14 @@ func main() {
 		"extra-permission-cm-namespace",
 		"",
 		"A namespace of the configmap for allowing extra permissions",
+	)
+	flag.BoolVar(&dummyDeployment, "dummy-deployment", false,
+		"If set, only the dummy interfaces will be used, no API calls will be fired")
+
+	flag.StringVar(&dummyConfig,
+		"dummy-config",
+		"",
+		"Path to the dummy config",
 	)
 	opts := zap.Options{
 		Development: true,
@@ -166,16 +178,30 @@ func main() {
 		os.Exit(1)
 	}
 
-	kafkaInstance, err := kafkawrap.NewKafkaConfluent(projectID, kafkaCluster, region)
-	if err != nil {
-		setupLog.Error(err, "couldn't create a kafka admin client")
-		os.Exit(1)
+	var kafkaInstance kafkawrap.KafkaImpl
+	var cloudInstance cloud.CloudImpl
+	if dummyDeployment {
+		kafkaInstance = kafkawrap.NewKafkaDummy()
+		cloudInstance, err = cloud.NewDummyInstance(dummyConfig)
+		if err != nil {
+			setupLog.Error(err, "Couldn't init the dummy cloud instance")
+			os.Exit(1)
+		}
+	} else {
+		kafkaInstance, err = kafkawrap.NewKafkaConfluent(projectID, kafkaCluster, region)
+		if err != nil {
+			setupLog.Error(err, "couldn't create a kafka admin client")
+			os.Exit(1)
+		}
+		cloudInstance = cloud.NewGCloudInstance(projectID)
 	}
+
 	if err = (&controller.KafkaUserReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorderFor("kafkauser-controller"),
 		Opts: &controller.KafkaUserReconcilerOpts{
+			CloudInstance:               cloudInstance,
 			GoogleProject:               projectID,
 			ClientRole:                  clientRole,
 			KafkaInstance:               kafkaInstance,

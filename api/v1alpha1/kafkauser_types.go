@@ -41,13 +41,25 @@ type ClusterAccess struct {
 	Role    string `json:"role"`
 }
 
+type KafkaUserState struct {
+	// Is cloud service account created?
+	CloudSA          bool `json:"cloudSA,omitempty"`
+	WorkloadIdentity bool `json:"workloadIdentity,omitempty"`
+	IamBindings      bool `json:"bindings,omitempty"`
+	// Is kubernetes service account ready
+	K8sSA bool `json:"k8sSA,omitempty"`
+	ACLs  bool `json:"acls,omitempty"`
+}
+
 // KafkaUserStatus defines the observed state of User.
 type KafkaUserStatus struct {
-	Ready              bool           `json:"ready"`
-	TopicAccessApplied []*TopicAccess `json:"topicAccessApplied,omitempty"`
-	SAEmail            string         `json:"saEmail,omitempty"`
-	ConfigHash         string         `json:"configHash,omitempty"`
-	Error              string         `json:"error,omitempty"`
+	Ready              bool               `json:"ready"`
+	TopicAccessApplied []*TopicAccess     `json:"topicAccessApplied,omitempty"`
+	SAEmail            string             `json:"saEmail,omitempty"`
+	ConfigHash         string             `json:"configHash,omitempty"`
+	Error              string             `json:"error,omitempty"`
+	Conditions         []metav1.Condition `json:"conditions,omitempty"`
+	KafkaUserState     *KafkaUserState    `json:"state,omitempty"`
 }
 
 // +kubebuilder:object:root=true

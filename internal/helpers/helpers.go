@@ -3,6 +3,7 @@ package helpers
 import (
 	"crypto/sha256"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -41,4 +42,22 @@ func GetHashFromAnything(input any) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("%x", sha256.Sum256(inputYaml)), nil
+}
+
+func StringSanitize(s string, limit int) string {
+	s = strings.ToLower(s)
+	unsupportedChars := regexp.MustCompile(`[^0-9a-zA-Z$-]`)
+	s = unsupportedChars.ReplaceAllString(s, "-")
+
+	if len(s) <= limit {
+		return s
+	}
+
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte(s)))
+
+	if limit <= 9 {
+		return hash[:limit]
+	}
+
+	return fmt.Sprintf("%s-%s", s[:limit-9], hash[:8])
 }
