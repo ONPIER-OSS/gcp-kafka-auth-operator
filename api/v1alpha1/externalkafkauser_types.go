@@ -24,9 +24,6 @@ import (
 type ExternalKafkaUserSpec struct {
 	Username    *string        `json:"username"`
 	TopicAccess []*TopicAccess `json:"topicAccess,omitempty"`
-	// foo is an example field of ExternalKafkaUser. Edit externalkafkauser_types.go to remove/update
-	// +optional
-	Foo *string `json:"foo,omitempty"`
 }
 
 // ExternalKafkaUserStatus defines the observed state of ExternalKafkaUser.

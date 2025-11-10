@@ -141,11 +141,13 @@ func (r *ExternalKafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Re
 func (r *ExternalKafkaUserReconciler) updateACLs(ctx context.Context, externalUserCR *gcpkafkav1alpha1.ExternalKafkaUser) (err error) {
 	log := logf.FromContext(ctx)
 	var desiredAccess []*kafkawrap.TopicAccess
-
-	desiredAccess, err = castAccessToKafkaFormat(ctx, externalUserCR.Spec.TopicAccess)
-	if err != nil {
-		return err
+	if externalUserCR.DeletionTimestamp == nil {
+		desiredAccess, err = castAccessToKafkaFormat(ctx, externalUserCR.Spec.TopicAccess)
+		if err != nil {
+			return err
+		}
 	}
+
 	log.Info("Desired amount of ACLs", "amount", len(desiredAccess))
 
 	// Append the operator user to every topic, so it doesn't lose access

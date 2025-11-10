@@ -15,7 +15,7 @@ test3`
 	assert.Equal(t, []string{"test", "test2", "test3"}, helpers.StringToSlice(str))
 }
 
-func TestGetHashFromKafkaUser(t *testing.T) {
+func TestGetHashFromKafkaUserEqual(t *testing.T) {
 	spec := &gcpkafkav1alpha1.KafkaUserSpec{
 		ServiceAccountName: "someName",
 		TopicAccess: []*gcpkafkav1alpha1.TopicAccess{{
@@ -27,9 +27,41 @@ func TestGetHashFromKafkaUser(t *testing.T) {
 		},
 	}
 
-	res, err := helpers.GetHashFromAnything(spec)
+	specCopy := spec.DeepCopy()
+
+	resOriginal, err := helpers.GetHashFromAnything(spec)
 	assert.NoError(t, err)
-	assert.Equal(t, "075953b08f99d85c149c3233bbfa22d56c8d3bd06b4fb4b549fd73187e7afdf2", res)
+
+	resCopy, err := helpers.GetHashFromAnything(specCopy)
+	assert.NoError(t, err)
+	assert.Equal(t, resOriginal, resCopy)
+}
+
+func TestGetHashFromExternalKafkaUserNotEqual(t *testing.T) {
+	usernameOne := "testone"
+	usernameTwo := "testtwo"
+	specOne := &gcpkafkav1alpha1.ExternalKafkaUserSpec{
+		Username: &usernameOne,
+		TopicAccess: []*gcpkafkav1alpha1.TopicAccess{{
+			Topic: "t1",
+			Role:  "readOnly",
+		}},
+	}
+	
+	specTwo := &gcpkafkav1alpha1.ExternalKafkaUserSpec{
+		Username: &usernameTwo,
+		TopicAccess: []*gcpkafkav1alpha1.TopicAccess{{
+			Topic: "t2",
+			Role:  "readWrite",
+		}},
+	}
+
+	resOne, err := helpers.GetHashFromAnything(specOne)
+	assert.NoError(t, err)
+
+	resTwo, err := helpers.GetHashFromAnything(specTwo)
+	assert.NoError(t, err)
+	assert.NotEqual(t, resOne, resTwo)
 }
 
 func TestGetHashFromExternalUser(t *testing.T) {
@@ -42,7 +74,11 @@ func TestGetHashFromExternalUser(t *testing.T) {
 		}},
 	}
 
-	res, err := helpers.GetHashFromAnything(spec)
+	specCopy := spec.DeepCopy()
+	resOriginal, err := helpers.GetHashFromAnything(spec)
 	assert.NoError(t, err)
-	assert.Equal(t, "38f49398f89645233175dc5c83f5527cf9fa6428d5ccf9d07c4926d5e369cd0c", res)
+	
+	resCopy, err := helpers.GetHashFromAnything(specCopy)
+	assert.NoError(t, err)
+	assert.Equal(t, resCopy, resOriginal)
 }
