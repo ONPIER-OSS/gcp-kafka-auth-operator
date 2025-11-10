@@ -1,0 +1,9 @@
+apiVersion: gcp-kafka.k8s.onpier.de/v1alpha1
+kind: ExternalKafkaUser
+metadata:
+  labels:
+    app.kubernetes.io/name: gcp-kafka-auth-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: externalkafkauser-sample
+spec:
+  # TODO(user): Add fields here

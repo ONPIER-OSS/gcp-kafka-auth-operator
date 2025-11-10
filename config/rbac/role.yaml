@@ -31,6 +31,7 @@ rules:
   - gcp-kafka.k8s.onpier.de
   resources:
   - clustertopics
+  - externalkafkausers
   - kafkausers
   verbs:
   - create
@@ -44,6 +45,7 @@ rules:
   - gcp-kafka.k8s.onpier.de
   resources:
   - clustertopics/finalizers
+  - externalkafkausers/finalizers
   - kafkausers/finalizers
   verbs:
   - update
@@ -51,6 +53,7 @@ rules:
   - gcp-kafka.k8s.onpier.de
   resources:
   - clustertopics/status
+  - externalkafkausers/status
   - kafkausers/status
   verbs:
   - get

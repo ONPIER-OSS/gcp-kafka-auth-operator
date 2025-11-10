@@ -197,6 +197,19 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ClusterTopic")
 		os.Exit(1)
 	}
+	if err := (&controller.ExternalKafkaUserReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		Opts: &controller.ExternalKafkaUserOpts{
+			KafkaInstance:   kafkaInstance,
+			AdminUserEmail:  adminUserEmail,
+			ReconcilePeriod: time.Minute,
+		},
+		Recorder: mgr.GetEventRecorderFor("externalkafkauser-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ExternalKafkaUser")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

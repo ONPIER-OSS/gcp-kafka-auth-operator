@@ -2,4 +2,5 @@
 resources:
 - gcp-kafka_v1alpha1_user.yaml
 - gcp-kafka_v1alpha1_clustertopic.yaml
+- gcp-kafka_v1alpha1_externalkafkauser.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

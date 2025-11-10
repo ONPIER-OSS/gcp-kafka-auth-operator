@@ -26,4 +26,13 @@ resources:
   kind: ClusterTopic
   path: github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: k8s.onpier.de
+  group: gcp-kafka
+  kind: ExternalKafkaUser
+  path: github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"
