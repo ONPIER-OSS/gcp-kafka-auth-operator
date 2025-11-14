@@ -191,7 +191,7 @@ func (kc *KafkaConfluent) ListACLs(ctx context.Context, user string) ([]*TopicAc
 		Type:                kafka.ResourceTopic,
 		Principal:           principal,
 		ResourcePatternType: kafka.ResourcePatternTypeAny,
-		Operation:           kafka.ACLOperationAll,
+		Operation:           kafka.ACLOperationAny,
 		PermissionType:      kafka.ACLPermissionTypeAllow,
 		Host:                "*",
 	}

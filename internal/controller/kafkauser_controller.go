@@ -575,7 +575,7 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 		}
 	}
 
-	currentAccess, err := castAccessToKafkaFormat(ctx, userCR.Status.TopicAccessApplied)
+	currentAccess, err := r.listACLs(ctx, userCR.Status.SAEmail)
 	if err != nil {
 		return err
 	}
