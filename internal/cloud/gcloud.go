@@ -86,7 +86,6 @@ func (g *GCloud) SetIAMBindings(ctx context.Context, cloudSaID string, roles []s
 	}
 
 	updatedPolicy := cleanUpPolicy(ctx, member, rawPolicy)
-	fmt.Println(updatedPolicy)
 	// Removing roles from the binding, to make sure that the operator is controlling all permissions
 	// TODO: It can lead to access problems, and should be removed once we find a better way to handle obsolete permissions
 	log.Info("Cleaning up the bindings")
@@ -106,8 +105,8 @@ func (g *GCloud) SetIAMBindings(ctx context.Context, cloudSaID string, roles []s
 	}
 	updatedPolicy = cleanUpPolicy(ctx, member, rawPolicyNew)
 
-	added := false
 	for _, role := range roles {
+		added := false
 		for _, binding := range updatedPolicy.Bindings {
 			// Always add a readWriteRole, becase the real access is managed by ACLs
 			if binding.Role == role {
