@@ -76,7 +76,8 @@ type KafkaUserReconcilerOpts struct {
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=watch;update;list
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=watch;list;get
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
-
+//
+//nolint:gocyclo
 func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 	reconcileResultRepeat := reconcile.Result{RequeueAfter: r.Opts.ReconcilePeriod, Requeue: true}
@@ -631,39 +632,6 @@ func (r *KafkaUserReconciler) getAllowedPermissions(ctx context.Context, name, n
 	return helpers.StringToSlice(data), nil
 }
 
-func createServiceAccount(ctx context.Context, projectID, serviceAccountName string) error {
-	log := logf.FromContext(ctx)
-	log.Info("Creating a service account", "name", serviceAccountName)
-	request := &iam.CreateServiceAccountRequest{
-		AccountId: serviceAccountName,
-		ServiceAccount: &iam.ServiceAccount{
-			DisplayName: serviceAccountName,
-			Description: "Managed by the kafka user operator",
-		},
-	}
-
-	service, err := iam.NewService(ctx)
-	if err != nil {
-		log.Error(err, "Couldn't initialize the IAM service")
-		return err
-	}
-	_, err = service.Projects.ServiceAccounts.Create("projects/"+projectID, request).Do()
-	if err != nil {
-		if errCasted, ok := err.(*googleapi.Error); ok {
-			// If already exists
-			// https://cloud.google.com/pubsub/docs/reference/error-codes
-			if errCasted.Code == 409 {
-				log.Info("Service Account already exists, re-using")
-			}
-		} else {
-			log.Error(err, "Couldn't create a service account")
-			return err
-		}
-	}
-
-	return nil
-}
-
 func deleteServiceAccount(ctx context.Context, projectID, serviceAccountEmail string) error {
 	log := logf.FromContext(ctx)
 	log.Info("Deleting a service account", "name", serviceAccountEmail)
@@ -728,112 +696,6 @@ func getServiceAccount(ctx context.Context, projectID, serviceAccountName string
 	}
 
 	return sa, nil
-}
-
-func addWorkloadIdentityBinding(
-	ctx context.Context,
-	projectID, k8sServiceAccountName, gcpServiceAccountName string,
-) error {
-	log := logf.FromContext(ctx)
-	log.Info("Adding a workload identity role to the k8s service account", "name", k8sServiceAccountName)
-
-	request := &iam.SetIamPolicyRequest{
-		Policy: &iam.Policy{
-			Bindings: []*iam.Binding{
-				{
-					Members: []string{
-						fmt.Sprintf("serviceAccount:%s.svc.id.goog[%s]", projectID, k8sServiceAccountName),
-					},
-					Role: "roles/iam.workloadIdentityUser",
-				},
-			},
-		},
-	}
-	service, err := iam.NewService(ctx)
-	if err != nil {
-		log.Error(err, "Couldn't initialize the IAM service")
-		return err
-	}
-	_, err = service.Projects.ServiceAccounts.SetIamPolicy(gcpServiceAccountName, request).Do()
-	if err != nil {
-		log.Error(err, "Couldn't add a workload identity binding",
-			"google service account", gcpServiceAccountName,
-			"k8s service account", k8sServiceAccountName,
-		)
-		return err
-	}
-
-	return nil
-}
-
-func addKafkaIAMBinding(
-	ctx context.Context,
-	projectID string,
-	roles []string,
-	serviceAccountEmail string,
-) error {
-	log := logf.FromContext(ctx)
-	log.Info("Adding the kafka IAM binding")
-
-	client, err := resourcemanager.NewProjectsClient(ctx)
-	if err != nil {
-		log.Error(err, "Failed to create client")
-		return err
-	}
-	defer func(client *resourcemanager.ProjectsClient) {
-		if err := client.Close(); err != nil {
-			log.Error(err, "Couldn't close the google client")
-		}
-	}(client)
-
-	// Get the current IAM policy.
-	getRequest := &iampb.GetIamPolicyRequest{
-		Resource: "projects/" + projectID,
-		Options: &iampb.GetPolicyOptions{
-			RequestedPolicyVersion: 3,
-		},
-	}
-
-	rawPolicy, err := client.GetIamPolicy(ctx, getRequest)
-	if err != nil {
-		log.Error(err, "Failed to get IAM policy")
-		return err
-	}
-	updatedPolicy := cleanUpPolicy(ctx, serviceAccountEmail, rawPolicy)
-
-	member := fmt.Sprintf("serviceAccount:%s", serviceAccountEmail)
-	added := false
-	for _, role := range roles {
-		for _, binding := range updatedPolicy.Bindings {
-			// Always add a readWriteRole, becase the real access is managed by ACLs
-			if binding.Role == role {
-				log.Info("Adding a new member to a role", "member", serviceAccountEmail, "role", role)
-				binding.Members = append(binding.Members, member)
-				added = true
-			}
-		}
-		if !added {
-			log.Info("No existing binding found, creating a new one", "role", role)
-			updatedPolicy.Bindings = append(updatedPolicy.Bindings, &iampb.Binding{
-				Role:    role,
-				Members: []string{member},
-			})
-		}
-	}
-
-	log.Info("Updating bindings")
-	// Set the updated IAM policy.
-	setRequest := &iampb.SetIamPolicyRequest{
-		Resource: "projects/" + projectID,
-		Policy:   updatedPolicy,
-	}
-	_, err = client.SetIamPolicy(ctx, setRequest)
-	if err != nil {
-		log.Error(err, "Failed to set IAM policy")
-		return err
-	}
-
-	return nil
 }
 
 // This function is removing a service account from the policies,
