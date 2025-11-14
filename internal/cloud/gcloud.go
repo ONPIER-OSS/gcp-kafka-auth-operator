@@ -105,8 +105,8 @@ func (g *GCloud) SetIAMBindings(ctx context.Context, cloudSaID string, roles []s
 	}
 	updatedPolicy = cleanUpPolicy(ctx, member, rawPolicyNew)
 
-	added := false
 	for _, role := range roles {
+		added := false
 		for _, binding := range updatedPolicy.Bindings {
 			// Always add a readWriteRole, becase the real access is managed by ACLs
 			if binding.Role == role {
