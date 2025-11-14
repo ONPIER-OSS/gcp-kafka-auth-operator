@@ -69,7 +69,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 		topicCR.SetFinalizers(helpers.SliceRemoveItem(
 			topicCR.GetFinalizers(),
-			consts.KAFKA_TOPIC_FINALZER,
+			consts.FINALIZER_KAFKA_TOPIC,
 		))
 		if err := r.Update(ctx, topicCR); err != nil {
 			return reconcileResult, err
@@ -108,7 +108,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if !topicCR.Spec.DeletionProtected {
 		topicCR.SetFinalizers(helpers.SliceAppendIfMissing(
 			topicCR.GetFinalizers(),
-			consts.KAFKA_TOPIC_FINALZER,
+			consts.FINALIZER_KAFKA_TOPIC,
 		))
 		if err := r.Update(ctx, topicCR); err != nil {
 			return reconcileResult, err
@@ -137,12 +137,14 @@ func (r *ClusterTopicReconciler) updateUserCRs(ctx context.Context, topicName st
 	for _, user := range kafkaUsers.Items {
 		if len(user.Spec.ClusterAccess) > 0 {
 			user.Status.Ready = false
+			user.Status.KafkaUserState.ACLs = false
 			if err := r.Status().Update(ctx, &user); err != nil {
 				return err
 			}
 		} else {
 			if user.DoesHaveAccess(topicName) {
 				user.Status.Ready = false
+				user.Status.KafkaUserState.ACLs = false
 				if err := r.Status().Update(ctx, &user); err != nil {
 					return err
 				}

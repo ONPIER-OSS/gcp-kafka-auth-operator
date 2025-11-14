@@ -47,7 +47,7 @@ func TestGetHashFromExternalKafkaUserNotEqual(t *testing.T) {
 			Role:  "readOnly",
 		}},
 	}
-	
+
 	specTwo := &gcpkafkav1alpha1.ExternalKafkaUserSpec{
 		Username: &usernameTwo,
 		TopicAccess: []*gcpkafkav1alpha1.TopicAccess{{
@@ -77,8 +77,20 @@ func TestGetHashFromExternalUser(t *testing.T) {
 	specCopy := spec.DeepCopy()
 	resOriginal, err := helpers.GetHashFromAnything(spec)
 	assert.NoError(t, err)
-	
+
 	resCopy, err := helpers.GetHashFromAnything(specCopy)
 	assert.NoError(t, err)
 	assert.Equal(t, resCopy, resOriginal)
+}
+
+func TestStringSanitizeShort(t *testing.T) {
+	str := "test**test__test-test"
+	expect := "test--test--test-test"
+	assert.Equal(t, expect, helpers.StringSanitize(str, 40))
+}
+
+func TestStringSanitizeLong(t *testing.T) {
+	str := "test**test__test-test"
+	expect := "t-38a46a1f"
+	assert.Equal(t, expect, helpers.StringSanitize(str, 10))
 }

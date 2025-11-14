@@ -84,7 +84,7 @@ func (r *ExternalKafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 		externalUserCR.SetFinalizers(helpers.SliceRemoveItem(
 			externalUserCR.GetFinalizers(),
-			consts.KAFKA_ACLS_FINALIZER,
+			consts.FINALIZER_KAFKA_ACLS,
 		))
 		if err := r.updateObject(ctx, externalUserCR); err != nil {
 			return reconcileResultRepeat, err
@@ -127,7 +127,7 @@ func (r *ExternalKafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		}
 		externalUserCR.SetFinalizers(helpers.SliceAppendIfMissing(
 			externalUserCR.GetFinalizers(),
-			consts.KAFKA_ACLS_FINALIZER,
+			consts.FINALIZER_KAFKA_ACLS,
 		))
 		if err := r.updateObject(ctx, externalUserCR); err != nil {
 			return reconcileResultRepeat, err

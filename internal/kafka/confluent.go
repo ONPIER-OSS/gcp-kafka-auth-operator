@@ -85,12 +85,12 @@ type TopicAccess struct {
 
 func NewTopicAccess(topic, access string) (*TopicAccess, error) {
 	switch access {
-	case consts.READ_WRITE_ACCESS:
+	case consts.ACCESS_READ_WRITE:
 		return &TopicAccess{
 			Topic:     topic,
 			Operation: kafka.ACLOperationAll,
 		}, nil
-	case consts.READ_ONLY_ACCESS:
+	case consts.ACCESS_READ_ONLY:
 		return &TopicAccess{
 			Topic:     topic,
 			Operation: kafka.ACLOperationRead,
@@ -103,9 +103,9 @@ func NewTopicAccess(topic, access string) (*TopicAccess, error) {
 func ParseTopicAccess(access *TopicAccess) (topic, role string, err error) {
 	switch access.Operation {
 	case kafka.ACLOperationAll:
-		return access.Topic, consts.READ_WRITE_ACCESS, nil
+		return access.Topic, consts.ACCESS_READ_WRITE, nil
 	case kafka.ACLOperationRead:
-		return access.Topic, consts.READ_ONLY_ACCESS, nil
+		return access.Topic, consts.ACCESS_READ_ONLY, nil
 	default:
 		return "", "", errors.New("unknown access")
 	}
@@ -181,4 +181,35 @@ func (kc *KafkaConfluent) ListTopics(ctx context.Context, hideInternal bool) ([]
 	}
 
 	return out, nil
+}
+
+func (kc *KafkaConfluent) ListACLs(ctx context.Context, user string) ([]*TopicAccess, error) {
+	log := log.FromContext(ctx)
+
+	principal := fmt.Sprintf("User:%s", user)
+	filter := kafka.ACLBindingFilter{
+		Type:                kafka.ResourceTopic,
+		Principal:           principal,
+		ResourcePatternType: kafka.ResourcePatternTypeAny,
+		Operation:           kafka.ACLOperationAll,
+		PermissionType:      kafka.ACLPermissionTypeAllow,
+		Host:                "*",
+	}
+	res, err := kc.AdminClient.DescribeACLs(ctx, filter)
+	if err != nil {
+		log.Error(err, "Couldn't list ACLs")
+		return nil, err
+	}
+
+	accessList := []*TopicAccess{}
+	for _, bind := range res.ACLBindings {
+		log.Info("Result of descrbe", "bind", bind.Name, "operation", bind.Operation)
+		access := &TopicAccess{
+			Topic:     bind.Name,
+			Operation: bind.Operation,
+		}
+		accessList = append(accessList, access)
+	}
+
+	return accessList, nil
 }
