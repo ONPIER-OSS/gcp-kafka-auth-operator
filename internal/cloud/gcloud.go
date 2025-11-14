@@ -17,7 +17,7 @@ type GCloud struct {
 }
 
 // GetIAMBindings implements CloudImpl.
-// TODO: It should be possible to used the googleapi lib
+// TODO: It should be possible to use the googleapi lib
 func (g *GCloud) GetIAMBindings(ctx context.Context, cloudSaID string) ([]string, error) {
 	log := logf.FromContext(ctx)
 	log.Info("Getting IAM bindings")
@@ -88,6 +88,7 @@ func (g *GCloud) SetIAMBindings(ctx context.Context, cloudSaID string, roles []s
 	updatedPolicy := cleanUpPolicy(ctx, member, rawPolicy)
 	fmt.Println(updatedPolicy)
 	// Removing roles from the binding, to make sure that the operator is controlling all permissions
+	// TODO: It can lead to access problems, and should be removed once we find a better way to handle obsolete permissions
 	log.Info("Cleaning up the bindings")
 	setRequestCleanup := &iampb.SetIamPolicyRequest{
 		Resource: "projects/" + g.ProjectID,
