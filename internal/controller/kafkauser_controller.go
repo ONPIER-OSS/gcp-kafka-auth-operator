@@ -393,6 +393,10 @@ func (r *KafkaUserReconciler) findKafkaUserForServiceAccount(ctx context.Context
 	for _, user := range kafkaUsers.Items {
 		if user.Spec.ServiceAccountName == name {
 			email, ok := sa.GetAnnotations()[consts.ANNOTATION_GKE_EMAIL]
+			if user.Status.KafkaUserState == nil {
+				user.Status.KafkaUserState = &gcpkafkav1alpha1.KafkaUserState{}
+			}
+
 			// If annotation is not set, reconcile the user
 			if !ok || email != user.Status.SAEmail {
 				user.Status.KafkaUserState.K8sSA = false
