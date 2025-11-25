@@ -124,14 +124,15 @@ func main() {
 							case *kafka.Message:
 								m := ev
 								if m.TopicPartition.Error != nil {
-									log.Error(m.TopicPartition.Error)
+									log.Error("Kafka error occurred: " + m.TopicPartition.Error.Error())
 									counters[fmt.Sprintf("%s-publish-failure", topic)].Inc()
 								} else {
+									log.Info("Kafka event published successfully")
 									counters[fmt.Sprintf("%s-publish-success", topic)].Inc()
 								}
 
 							default:
-								fmt.Printf("Ignored event: %s\n", ev)
+								log.Info("Ignored event")
 							}
 							// in this case the caller knows that this channel is used only
 							// for one Produce call, so it can close it.
