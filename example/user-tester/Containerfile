@@ -4,5 +4,6 @@ COPY . .
 RUN go build -o checker
 
 FROM ubuntu
+RUN apt-get update -y && apt-get install -y ca-certificates default-jre wget unzip
 COPY --from=builder /workdir/checker /checker
 CMD ["/checker"]
