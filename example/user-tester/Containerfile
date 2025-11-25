@@ -1,0 +1,8 @@
+FROM golang:latest as builder
+WORKDIR /workdir
+COPY . .
+RUN go build -o checker
+
+FROM ubuntu
+COPY --from=builder /workdir/checker /checker
+CMD ["/checker"]
