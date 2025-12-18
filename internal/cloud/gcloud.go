@@ -253,7 +253,7 @@ func (g *GCloud) CreateServiceAccount(ctx context.Context, name string) (*Servic
 		return nil, err
 	}
 
-	var result *ServiceAccount
+	result := &ServiceAccount{}
 	sa, err := service.Projects.ServiceAccounts.Create("projects/"+g.ProjectID, request).Do()
 	if err != nil {
 		if errCasted, ok := err.(*googleapi.Error); ok {

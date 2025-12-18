@@ -248,34 +248,36 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcileResultNoRepeat, nil
 	}
 
+	k8sServiceAccount := &corev1.ServiceAccount{}
+	err = r.Get(ctx, types.NamespacedName{
+		Namespace: userCR.GetNamespace(),
+		Name:      userCR.Spec.ServiceAccountName,
+	}, k8sServiceAccount)
+	if err != nil {
+		errMsg := "Could not get a k8s service account, make sure it is created"
+		r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
+		userCR.Status.Error = errMsg
+		log.Error(err, errMsg)
+		return reconcileResultRepeat, err
+	}
+
+	email, ok := k8sServiceAccount.GetAnnotations()[consts.ANNOTATION_GKE_EMAIL]
+	// If annotation is not set, reconcile the user
+	if !ok || email != userCR.Status.SAEmail {
+		userCR.Status.KafkaUserState.K8sSA = false
+		userCR.Status.Ready = false
+	}
 	// Update the k8s service account
-	// TODO: Add a check for the annotation
 	if !userCR.Status.KafkaUserState.K8sSA {
 		log.Info("Updating the k8s service account")
-		k8sSA := &corev1.ServiceAccount{}
+		k8sServiceAccount.Annotations[consts.ANNOTATION_GKE_EMAIL] = userCR.Status.SAEmail
 
-		err = r.Get(ctx, types.NamespacedName{
-			Namespace: userCR.GetNamespace(),
-			Name:      userCR.Spec.ServiceAccountName,
-		}, k8sSA)
-		if err != nil {
-			errMsg := "Could not get a k8s service account, make sure it is created"
-			r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
-			userCR.Status.Error = errMsg
-			log.Error(err, errMsg)
-			return reconcileResultRepeat, err
-		}
-		if k8sSA.Annotations == nil {
-			k8sSA.Annotations = map[string]string{}
-		}
-		k8sSA.Annotations[consts.ANNOTATION_GKE_EMAIL] = userCR.Status.SAEmail
-
-		err = r.Update(ctx, k8sSA)
+		err = r.Update(ctx, k8sServiceAccount)
 		if err != nil {
 			errMsg := "Couldn ot annotate a service account"
 			r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 			userCR.Status.Error = errMsg
-			log.Error(err, errMsg, "name", k8sSA.GetName())
+			log.Error(err, errMsg, "name", k8sServiceAccount.GetName())
 			return reconcileResultRepeat, err
 		}
 
@@ -384,6 +386,7 @@ func (r *KafkaUserReconciler) findKafkaUserForServiceAccount(ctx context.Context
 	log = log.WithValues("sa", name, "namespace", namespace)
 	log.Info("A service account modification was spotted")
 
+	req := []reconcile.Request{}
 	kafkaUsers := &gcpkafkav1alpha1.KafkaUserList{}
 	if err := r.List(ctx, kafkaUsers, &client.ListOptions{Namespace: namespace}); err != nil {
 		log.Error(err, "Couldn't list kafka users")
@@ -392,23 +395,16 @@ func (r *KafkaUserReconciler) findKafkaUserForServiceAccount(ctx context.Context
 
 	for _, user := range kafkaUsers.Items {
 		if user.Spec.ServiceAccountName == name {
-			email, ok := sa.GetAnnotations()[consts.ANNOTATION_GKE_EMAIL]
-			if user.Status.KafkaUserState == nil {
-				user.Status.KafkaUserState = &gcpkafkav1alpha1.KafkaUserState{}
-			}
-
-			// If annotation is not set, reconcile the user
-			if !ok || email != user.Status.SAEmail {
-				user.Status.KafkaUserState.K8sSA = false
-				user.Status.Ready = false
-				if err := r.updateStatus(ctx, &user); err != nil {
-					log.Error(err, "Couldn't update kafka user status")
-				}
-			}
+			req = append(req, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      user.Name,
+					Namespace: user.Namespace,
+				},
+			})
+			log.Info("ServiceAccount linked to the KafkaUser custom resource issued an event")
 		}
 	}
-
-	return []reconcile.Request{}
+	return req
 }
 
 // Handle cases when resource is deleted
