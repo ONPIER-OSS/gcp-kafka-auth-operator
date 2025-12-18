@@ -395,9 +395,9 @@ func (r *KafkaUserReconciler) findKafkaUserForServiceAccount(ctx context.Context
 
 	for _, user := range kafkaUsers.Items {
 		if user.Spec.ServiceAccountName == name {
-    	req = append(req, reconcile.Request{
+			req = append(req, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name: user.Name,
+					Name:      user.Name,
 					Namespace: user.Namespace,
 				},
 			})
@@ -817,4 +817,3 @@ func (r *KafkaUserReconciler) updateObject(ctx context.Context, userCR *gcpkafka
 	}
 	return nil
 }
-
