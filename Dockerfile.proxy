@@ -1,4 +1,4 @@
-ARG KAFKA_TOOLS_VERSION=v1.0.5
+ARG KAFKA_TOOLS_VERSION=v1.0.6
 
 FROM ubuntu as builder
 ARG KAFKA_TOOLS_VERSION
@@ -11,7 +11,7 @@ RUN mv $(find . -type f -name kafka_gcp_credentials_server.py) /out/
 
 FROM python
 ARG KAFKA_TOOLS_VERSION
-RUN pip install packaging urllib3 google-auth
+RUN pip install packaging urllib3 requests google-auth
 WORKDIR /src
 COPY --from=builder /out/* .
 CMD ["python", "/src/kafka_gcp_credentials_server.py"]
