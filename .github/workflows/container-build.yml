@@ -23,6 +23,9 @@ jobs:
           - file: ./example/test-topic-view/Containerfile
             name: gcp-kafka-test-topic-access
             context: ./example/test-topic-view
+          - file: ./example/user-tester/Containerfile
+            name: gcp-kafka-user-tester
+            context: ./example/user-tester
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
