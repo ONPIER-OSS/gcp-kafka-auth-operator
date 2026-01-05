@@ -43,6 +43,8 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -68,6 +70,13 @@ type KafkaUserReconcilerOpts struct {
 	ReconcilePeriod             time.Duration
 	ExtraPermissionsCMNamespace string
 	ExtraPermissionsCM          string
+}
+
+var conflictRetry = wait.Backoff{
+	Steps:    10,
+	Duration: 10 * time.Millisecond,
+	Factor:   5.0,
+	Jitter:   0.1,
 }
 
 // +kubebuilder:rbac:groups=gcp-kafka.k8s.onpier.de,resources=kafkausers,verbs=get;list;watch;create;update;patch;delete
@@ -794,12 +803,16 @@ func TestCheckCleanupPolicies(t *testing.T) {
 
 func (r *KafkaUserReconciler) updateStatus(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {
 	log := logf.FromContext(ctx)
-	if err := r.Status().Update(ctx, userCR); err != nil {
-		log.Error(err, "failed to update status")
-		return err
-	}
-	if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
-		log.Error(err, "Failed to get an updated object")
+	if err := retry.RetryOnConflict(conflictRetry, func() error {
+		if err := r.Status().Update(ctx, userCR); err != nil {
+			return err
+		}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		log.Error(err, "Failed to update status", "retries", conflictRetry.Steps)
 		return err
 	}
 	return nil
@@ -807,12 +820,16 @@ func (r *KafkaUserReconciler) updateStatus(ctx context.Context, userCR *gcpkafka
 
 func (r *KafkaUserReconciler) updateObject(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {
 	log := logf.FromContext(ctx)
-	if err := r.Update(ctx, userCR); err != nil {
-		log.Error(err, "failed to update status")
-		return err
-	}
-	if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
-		log.Error(err, "Failed to get an updated object")
+	if err := retry.RetryOnConflict(conflictRetry, func() error {
+		if err := r.Update(ctx, userCR); err != nil {
+			return err
+		}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(userCR), userCR); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		log.Error(err, "Failed to update status", "retries", conflictRetry.Steps)
 		return err
 	}
 	return nil
