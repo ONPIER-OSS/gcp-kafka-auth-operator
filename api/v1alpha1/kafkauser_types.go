@@ -28,7 +28,14 @@ type KafkaUserSpec struct {
 	ClusterAccess string `json:"clusterAccess,omitempty"`
 	// Roles that must be additionally assigned to the gcp IAM
 	// For example, when an app needs to have access to redis and kafka.
-	ExtraRoles []string `json:"extraRoles,omitempty"`
+	ExtraRoles []ExtraRole `json:"extraRoles,omitempty"`
+}
+
+type ExtraRole struct {
+	Name       string `json:"name,omitempty"`
+	Type       string `json:"type,omitempty"`
+	Bucket     string `json:"bucket,omitempty"`
+	Permission string `json:"permission,omitempty"`
 }
 
 type TopicAccess struct {

@@ -2,8 +2,6 @@ package kafkawrap
 
 import "context"
 
-type KafkaDummy struct{}
-
 // ListACLs implements KafkaImpl.
 func (k *KafkaDummy) ListACLs(ctx context.Context, user string) ([]*TopicAccess, error) {
 	panic("unimplemented")

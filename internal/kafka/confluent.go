@@ -4,46 +4,31 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
-	"strings"
-	"time"
-
+	kafkaconfig "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka/config"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
 	kafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"strings"
+	"time"
 )
 
-type KafkaConfluent struct {
-	AdminClient *kafka.AdminClient
-}
+func NewKafkaConfluent(ctx context.Context, env, region, bootstrapServer string) (KafkaImpl, error) {
+	log := logf.FromContext(ctx)
 
-func NewKafkaConfluent(projectID, kafkaClusterName, region string) (KafkaImpl, error) {
 	kafkaInstance := &KafkaConfluent{}
-	var err error
-	timeout := 30 * time.Second
-	_, err = net.DialTimeout("tcp", "localhost:14293", timeout)
-	if err != nil {
-		return nil, errors.New("proxy isn't reachable")
-	}
-	bootstrapServer := fmt.Sprintf("bootstrap.%s.%s.managedkafka.%s.cloud.goog:9092",
-		kafkaClusterName, region, projectID)
-	config := &kafka.ConfigMap{
-		"bootstrap.servers":        bootstrapServer,
-		"enable.auto.offset.store": false,
-		"session.timeout.ms":       6000,
-		"security.protocol":        "SASL_SSL",
-		"sasl.mechanisms":          "OAUTHBEARER",
-		// The auth proxy must be running in the port 14293
-		"sasl.oauthbearer.token.endpoint.url": "localhost:14293",
-		"sasl.oauthbearer.client.id":          "unused",
-		"sasl.oauthbearer.client.secret":      "unused",
-		"sasl.oauthbearer.method":             "oidc",
-	}
-	kafkaInstance.AdminClient, err = kafka.NewAdminClient(config)
+
+	configProvider, err := kafkaconfig.NewKafkaConfigInstance(env, region, bootstrapServer)
 	if err != nil {
 		return nil, err
 	}
 
+	admin, err := configProvider.CreateAdmin(ctx)
+	if err != nil {
+		log.Error(err, "Couldn't create admin")
+		return nil, err
+	}
+	kafkaInstance.AdminClient = admin
 	return kafkaInstance, nil
 }
 

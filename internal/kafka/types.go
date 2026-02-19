@@ -2,7 +2,14 @@ package kafkawrap
 
 import (
 	"context"
+	kafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
+
+type KafkaConfluent struct {
+	AdminClient *kafka.AdminClient
+}
+
+type KafkaDummy struct{}
 
 type KafkaImpl interface {
 	CreateACL(ctx context.Context, username string, access []*TopicAccess) error

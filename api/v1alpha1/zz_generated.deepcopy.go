@@ -334,7 +334,7 @@ func (in *KafkaUserSpec) DeepCopyInto(out *KafkaUserSpec) {
 	}
 	if in.ExtraRoles != nil {
 		in, out := &in.ExtraRoles, &out.ExtraRoles
-		*out = make([]string, len(*in))
+		*out = make([]ExtraRole, len(*in))
 		copy(*out, *in)
 	}
 }

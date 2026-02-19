@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
 	"gopkg.in/yaml.v3"
 )
 
@@ -60,4 +61,15 @@ func StringSanitize(s string, limit int) string {
 	}
 
 	return fmt.Sprintf("%s-%s", s[:limit-9], hash[:8])
+}
+
+func DetectEnv(bootstrapServer string) string {
+	switch {
+	case strings.Contains(bootstrapServer, "amazonaws.com"):
+		return consts.EnvAWS
+	case strings.Contains(bootstrapServer, "cloud.goog"):
+		return consts.EnvGCP
+	default:
+		return ""
+	}
 }
