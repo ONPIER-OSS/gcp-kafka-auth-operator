@@ -53,8 +53,16 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	reconcilePeriod := time.Minute
 	reconcileResult := reconcile.Result{RequeueAfter: reconcilePeriod}
 
+	// Create kafka admin
+	admin, err := r.KafkaInstance.CreateAdmin(ctx)
+	if err != nil {
+		log.Error(err, "Couldn't create admin")
+		return ctrl.Result{}, err
+	}
+	defer admin.Close()
+
 	topicCR := &gcpkafkav1alpha1.ClusterTopic{}
-	err := r.Get(ctx, req.NamespacedName, topicCR)
+	err = r.Get(ctx, req.NamespacedName, topicCR)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -63,7 +71,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 
 	if topicCR.DeletionTimestamp != nil {
-		if err := r.KafkaInstance.RemoveTopic(ctx, topicCR.GetName()); err != nil {
+		if err := r.KafkaInstance.RemoveTopic(ctx, admin, topicCR.GetName()); err != nil {
 			log.Error(err, "Reconciliation failed")
 			return reconcileResult, err
 		}
@@ -74,7 +82,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if err := r.Update(ctx, topicCR); err != nil {
 			return reconcileResult, err
 		}
-		if err := r.KafkaInstance.DeleteACL(ctx, r.AdminUserEmail, []*kafkawrap.TopicAccess{{
+		if err := r.KafkaInstance.DeleteACL(ctx, admin, r.AdminUserEmail, []*kafkawrap.TopicAccess{{
 			Topic:     topicCR.Name,
 			Operation: kafka.ACLOperationAll,
 		}}); err != nil {
@@ -97,6 +105,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}()
 	if err := r.KafkaInstance.CreateTopic(
 		ctx,
+		admin,
 		topicCR.GetName(),
 		topicCR.Spec.NumPartitions,
 		topicCR.Spec.ReplicationFactor,
@@ -116,7 +125,7 @@ func (r *ClusterTopicReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		if err := r.Get(ctx, req.NamespacedName, topicCR); err != nil {
 			return reconcileResult, err
 		}
-		if err := r.KafkaInstance.CreateACL(ctx, r.AdminUserEmail, []*kafkawrap.TopicAccess{{
+		if err := r.KafkaInstance.CreateACL(ctx, admin, r.AdminUserEmail, []*kafkawrap.TopicAccess{{
 			Topic:     topicCR.Name,
 			Operation: kafka.ACLOperationAll,
 		}}); err != nil {

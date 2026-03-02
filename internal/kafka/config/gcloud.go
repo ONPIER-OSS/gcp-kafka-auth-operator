@@ -2,10 +2,11 @@ package kafkaconfig
 
 import (
 	"context"
-	kafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"net"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"time"
+
+	kafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func NewGCPKafkaConfig(bootstrapServer string) KafkaConfigImpl {
@@ -26,11 +27,9 @@ func (g *GCPConfig) CreateAdmin(ctx context.Context) (*kafka.AdminClient, error)
 	}
 
 	kafkaConfig := &kafka.ConfigMap{
-		"bootstrap.servers":        g.BootstrapServers,
-		"enable.auto.offset.store": false,
-		"session.timeout.ms":       6000,
-		"security.protocol":        "SASL_SSL",
-		"sasl.mechanisms":          "OAUTHBEARER",
+		"bootstrap.servers": g.BootstrapServers,
+		"security.protocol": "SASL_SSL",
+		"sasl.mechanisms":   "OAUTHBEARER",
 		// The auth proxy must be running in the port 14293
 		"sasl.oauthbearer.token.endpoint.url": "localhost:14293",
 		"sasl.oauthbearer.client.id":          "unused",

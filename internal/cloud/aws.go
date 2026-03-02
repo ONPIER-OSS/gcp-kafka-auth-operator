@@ -5,6 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"net/url"
+	"slices"
+	"strings"
+
 	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,10 +20,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	corev1 "k8s.io/api/core/v1"
-	"net/url"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"slices"
-	"strings"
 )
 
 func NewAWSInstance(ctx context.Context, oidcID, mskARN string) (CloudImpl, error) {
@@ -33,9 +35,9 @@ func NewAWSInstance(ctx context.Context, oidcID, mskARN string) (CloudImpl, erro
 	}
 
 	return &AWS{
-		IamClient: iam.NewFromConfig(cfg),
-		OidcID:    oidcID,
-		MSK:       *msk,
+		Config: cfg,
+		OidcID: oidcID,
+		MSK:    *msk,
 	}, nil
 }
 
@@ -45,7 +47,7 @@ func parse(mskArn string) (*MSK, error) {
 		return nil, err
 	}
 	if parsedARN.Service != "kafka" {
-		return nil, fmt.Errorf("Not a MSK ARN")
+		return nil, fmt.Errorf("not a MSK ARN")
 	}
 	msk := &MSK{
 		ARN:       mskArn,
@@ -58,6 +60,7 @@ func (a *AWS) CreateIdentity(ctx context.Context, identityName string) (*Identit
 	log := logf.FromContext(ctx)
 	log.Info("Creating new role")
 
+	iamClient := iam.NewFromConfig(a.Config)
 	// Creating an empty trust policy.
 	trustPolicy := TrustPolicyDocument{
 		Version: "2012-10-17",
@@ -72,7 +75,7 @@ func (a *AWS) CreateIdentity(ctx context.Context, identityName string) (*Identit
 		log.Error(err, "Couldn't create trust policy")
 		return nil, err
 	}
-	result, err := a.IamClient.CreateRole(ctx, &iam.CreateRoleInput{
+	result, err := iamClient.CreateRole(ctx, &iam.CreateRoleInput{
 		AssumeRolePolicyDocument: aws.String(string(policyBytes)),
 		RoleName:                 aws.String(identityName),
 	})
@@ -99,8 +102,9 @@ func (a *AWS) GetIdentity(ctx context.Context, identityName string) (*Identity, 
 	log := logf.FromContext(ctx)
 	log.Info("Getting role")
 
+	iamClient := iam.NewFromConfig(a.Config)
 	var role *Identity
-	result, err := a.IamClient.GetRole(ctx, &iam.GetRoleInput{
+	result, err := iamClient.GetRole(ctx, &iam.GetRoleInput{
 		RoleName: aws.String(identityName),
 	})
 	if err != nil {
@@ -121,8 +125,9 @@ func (a *AWS) DeleteIdentity(ctx context.Context, identity *Identity) error {
 	log := logf.FromContext(ctx)
 	log.Info("Deleting role")
 
+	iamClient := iam.NewFromConfig(a.Config)
 	roleName := identity.Name
-	_, err := a.IamClient.DeleteRole(ctx, &iam.DeleteRoleInput{
+	_, err := iamClient.DeleteRole(ctx, &iam.DeleteRoleInput{
 		RoleName: aws.String(roleName),
 	})
 	if err != nil {
@@ -136,6 +141,7 @@ func (a *AWS) AddWorkloadIdentity(ctx context.Context, k8sNs, k8sSa, identityNam
 	log := logf.FromContext(ctx)
 	log.Info("Adding assume role policy")
 
+	iamClient := iam.NewFromConfig(a.Config)
 	providerURL := fmt.Sprintf("oidc.eks.%s.amazonaws.com/id/%s", a.MSK.ParsedARN.Region, a.OidcID)
 	subject := fmt.Sprintf("system:serviceaccount:%s:%s", k8sNs, k8sSa)
 	trustPolicy := TrustPolicyDocument{
@@ -160,7 +166,7 @@ func (a *AWS) AddWorkloadIdentity(ctx context.Context, k8sNs, k8sSa, identityNam
 		log.Error(err, "Couldn't create trust policy")
 		return err
 	}
-	_, err = a.IamClient.UpdateAssumeRolePolicy(ctx, &iam.UpdateAssumeRolePolicyInput{
+	_, err = iamClient.UpdateAssumeRolePolicy(ctx, &iam.UpdateAssumeRolePolicyInput{
 		RoleName:       aws.String(identityName),
 		PolicyDocument: aws.String(string(policyBytes)),
 	})
@@ -176,7 +182,8 @@ func (a *AWS) CheckWorkloadIdentity(ctx context.Context, k8sNs, k8sSa, identityN
 	log := logf.FromContext(ctx)
 	log.Info("Checking assume role policy")
 
-	result, err := a.IamClient.GetRole(ctx, &iam.GetRoleInput{
+	iamClient := iam.NewFromConfig(a.Config)
+	result, err := iamClient.GetRole(ctx, &iam.GetRoleInput{
 		RoleName: aws.String(identityName),
 	})
 	if err != nil {
@@ -196,29 +203,42 @@ func (a *AWS) CheckWorkloadIdentity(ctx context.Context, k8sNs, k8sSa, identityN
 		return err
 	}
 
-	expectedSub := fmt.Sprintf("%s:%s", k8sNs, k8sSa)
+	providerURL := fmt.Sprintf("oidc.eks.%s.amazonaws.com/id/%s", a.MSK.ParsedARN.Region, a.OidcID)
+	expectedFederated := fmt.Sprintf("arn:aws:iam::%s:oidc-provider/%s", a.MSK.ParsedARN.AccountID, providerURL)
+	expectedAud := "sts.amazonaws.com"
+	expectedSub := fmt.Sprintf("system:serviceaccount:%s:%s", k8sNs, k8sSa)
+	expectedAudKey := fmt.Sprintf("%s:aud", providerURL)
+	expectedSubKey := fmt.Sprintf("%s:sub", providerURL)
 
 	for _, stmt := range policy.Statement {
+		if stmt.Effect != "Allow" {
+			continue
+		}
+		if stmt.Principal["Federated"] != expectedFederated {
+			continue
+		}
 		conds, ok := stmt.Condition["StringLike"]
 		if !ok {
 			continue
 		}
-		// conds is a map[string]string
-		for _, v := range conds {
-			if strings.Contains(v, expectedSub) {
-				return nil
-			}
+		if conds[expectedAudKey] != expectedAud {
+			continue
 		}
+		if conds[expectedSubKey] != expectedSub {
+			continue
+		}
+		return nil
 	}
-	return ErrNotFound
+	return fmt.Errorf("assume role policy doesn't have enough permissions")
 }
 
 func (a *AWS) GetPermissions(ctx context.Context, identity *Identity) (*DesiredPermissions, error) {
 	log := logf.FromContext(ctx)
 	log.Info("Getting inline policies")
 
+	iamClient := iam.NewFromConfig(a.Config)
 	policyName := "kafka-user-policy"
-	out, err := a.IamClient.GetRolePolicy(ctx, &iam.GetRolePolicyInput{
+	out, err := iamClient.GetRolePolicy(ctx, &iam.GetRolePolicyInput{
 		RoleName:   aws.String(identity.Name),
 		PolicyName: aws.String(policyName),
 	})
@@ -244,9 +264,10 @@ func (a *AWS) SetPermissions(ctx context.Context, identity *Identity, permission
 	log := logf.FromContext(ctx)
 	log.Info("Creating inline policies")
 
+	iamClient := iam.NewFromConfig(a.Config)
 	// Create the inline policy
 	for policyName, policyDoc := range permissions.InlinePolicies {
-		_, err := a.IamClient.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
+		_, err := iamClient.PutRolePolicy(ctx, &iam.PutRolePolicyInput{
 			RoleName:       aws.String(identity.Name),
 			PolicyName:     aws.String(policyName),
 			PolicyDocument: aws.String(policyDoc),
@@ -255,7 +276,7 @@ func (a *AWS) SetPermissions(ctx context.Context, identity *Identity, permission
 			log.Error(err, "Couldn't attach inline policy")
 		}
 	}
-	//TO-DO:  Delete existing policies if they do not match policyName
+	// TO-DO:Delete existing policies if they do not match policyName
 	return nil
 }
 
@@ -284,6 +305,7 @@ func (a *AWS) DeletePermissions(ctx context.Context, identity *Identity) error {
 	log := logf.FromContext(ctx)
 	log.Info("Deleting inline policies")
 
+	iamClient := iam.NewFromConfig(a.Config)
 	identityName := identity.Name
 	// delete inline policies
 	currentInline, err := a.GetPermissions(ctx, identity)
@@ -292,7 +314,7 @@ func (a *AWS) DeletePermissions(ctx context.Context, identity *Identity) error {
 		return err
 	}
 	for have := range currentInline.InlinePolicies {
-		_, err := a.IamClient.DeleteRolePolicy(ctx, &iam.DeleteRolePolicyInput{
+		_, err := iamClient.DeleteRolePolicy(ctx, &iam.DeleteRolePolicyInput{
 			RoleName:   aws.String(identityName),
 			PolicyName: aws.String(have),
 		})
@@ -336,15 +358,17 @@ func (a *AWS) BuildDesiredPermissions(ctx context.Context, userCR *gcpkafkav1alp
 	log := logf.FromContext(ctx)
 	log.Info("Building desired permissions")
 
-	var statements []InlinePolicyStatement
-	statements = append(statements, InlinePolicyStatement{
-		Effect: "Allow",
-		Action: []string{
-			"kafka-cluster:Connect",
-			"kafka-cluster:DescribeCluster",
+	//nolint:prealloc
+	statements := []InlinePolicyStatement{
+		{
+			Effect: "Allow",
+			Action: []string{
+				"kafka-cluster:Connect",
+				"kafka-cluster:DescribeCluster",
+			},
+			Resource: []string{a.MSK.ARN},
 		},
-		Resource: []string{a.MSK.ARN},
-	})
+	}
 
 	for _, ta := range userCR.Spec.TopicAccess {
 
@@ -412,7 +436,9 @@ func (a *AWS) buildExtraPermissions(ctx context.Context, userCR *gcpkafkav1alpha
 		}
 		// Ignore GCP-style entries
 		if extraRole.Type == "" {
-			continue
+			err := errors.New("empty extraRoles.type is not allowed")
+			errMsg := fmt.Sprintf("Type must be one of %s", allowedPermissions)
+			log.Error(err, errMsg)
 		}
 
 		switch extraRole.Type {

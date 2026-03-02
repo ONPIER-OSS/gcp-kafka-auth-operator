@@ -88,12 +88,12 @@ func main() {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&accountID, "account-id", "0", "The ID of the cloud account. either google project id or aws account id")
+	flag.StringVar(&accountID, "account-id", "0", "The ID of the cloud account. google project id or aws account id")
 	flag.StringVar(&region, "region", "", "A gcp or aws region where the kafka cluster is deployed.")
 	flag.StringVar(&bootstrapServer, "bootstrap-server", "", "The url of the kafka cluster.")
 	flag.StringVar(&mskARN, "msk-arn", "", "The ARN of the AWS MSK cluster.")
 	flag.StringVar(&clientRole, "client-role", "", "The gcp role for kafka client access.")
-	flag.StringVar(&adminUserEmail, "admin-user", "", "An email of the admin service account in gcp or role name of admin user in aws")
+	flag.StringVar(&adminUserEmail, "admin-user", "", "email of the admin service account in gcp")
 	flag.StringVar(&oidcID, "oidc-id", "", "AWS Account OIDC ID")
 	flag.StringVar(&extraPermissionsCM,
 		"extra-permission-cm",
@@ -211,6 +211,7 @@ func main() {
 			setupLog.Error(err, "Couldn't create the kafka instance")
 			os.Exit(1)
 		}
+
 		cloudInstance, err = cloud.NewCloudInstance(ctx, env, accountID, clientRole, oidcID, mskARN)
 		if err != nil {
 			setupLog.Error(err, "Couldn't create the cloud instance")

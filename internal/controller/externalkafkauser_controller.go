@@ -60,6 +60,14 @@ func (r *ExternalKafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	reconcileResultRepeat := reconcile.Result{RequeueAfter: r.Opts.ReconcilePeriod, Requeue: true}
 	reconcileResultNoRepeat := reconcile.Result{Requeue: false}
 
+	// Create kafka admin
+	admin, err := r.Opts.KafkaInstance.CreateAdmin(ctx)
+	if err != nil {
+		log.Error(err, "Couldn't create admin")
+		return ctrl.Result{}, err
+	}
+	defer admin.Close()
+
 	externalUserCR := &gcpkafkav1alpha1.ExternalKafkaUser{}
 	if err := r.Get(ctx, req.NamespacedName, externalUserCR); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -70,7 +78,7 @@ func (r *ExternalKafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	if externalUserCR.DeletionTimestamp != nil {
-		if err := r.updateACLs(ctx, externalUserCR); err != nil {
+		if err := r.updateACLs(ctx, admin, externalUserCR); err != nil {
 			errMsg := "Error while updating ACLs"
 			r.Recorder.Event(externalUserCR, corev1.EventTypeWarning, "Error", errMsg)
 			externalUserCR.Status.Error = errMsg
@@ -118,7 +126,7 @@ func (r *ExternalKafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			}
 		}()
 
-		if err := r.updateACLs(ctx, externalUserCR); err != nil {
+		if err := r.updateACLs(ctx, admin, externalUserCR); err != nil {
 			errMsg := "Could not update ACLs"
 			r.Recorder.Event(externalUserCR, corev1.EventTypeWarning, "Error", errMsg)
 			externalUserCR.Status.Error = errMsg
@@ -138,7 +146,7 @@ func (r *ExternalKafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return ctrl.Result{}, nil
 }
 
-func (r *ExternalKafkaUserReconciler) updateACLs(ctx context.Context, externalUserCR *gcpkafkav1alpha1.ExternalKafkaUser) (err error) {
+func (r *ExternalKafkaUserReconciler) updateACLs(ctx context.Context, admin *kafka.AdminClient, externalUserCR *gcpkafkav1alpha1.ExternalKafkaUser) (err error) {
 	log := logf.FromContext(ctx)
 	var desiredAccess []*kafkawrap.TopicAccess
 	if externalUserCR.DeletionTimestamp == nil {
@@ -152,7 +160,7 @@ func (r *ExternalKafkaUserReconciler) updateACLs(ctx context.Context, externalUs
 
 	// Append the operator user to every topic, so it doesn't lose access
 	for _, topic := range desiredAccess {
-		if err := r.Opts.KafkaInstance.CreateACL(ctx, r.Opts.AdminUserEmail, []*kafkawrap.TopicAccess{{
+		if err := r.Opts.KafkaInstance.CreateACL(ctx, admin, r.Opts.AdminUserEmail, []*kafkawrap.TopicAccess{{
 			Topic:     topic.Topic,
 			Operation: kafka.ACLOperationAll,
 		}}); err != nil {
@@ -172,13 +180,13 @@ func (r *ExternalKafkaUserReconciler) updateACLs(ctx context.Context, externalUs
 	log.Info("ACLs are marked for creating", "amount", len(newAccess))
 
 	if len(delAccess) > 0 {
-		if err := r.Opts.KafkaInstance.DeleteACL(ctx, *externalUserCR.Spec.Username, delAccess); err != nil {
+		if err := r.Opts.KafkaInstance.DeleteACL(ctx, admin, *externalUserCR.Spec.Username, delAccess); err != nil {
 			log.Error(err, "Couldn't delete ACLs")
 			return err
 		}
 	}
 	if len(newAccess) > 0 {
-		if err := r.Opts.KafkaInstance.CreateACL(ctx, *externalUserCR.Spec.Username, newAccess); err != nil {
+		if err := r.Opts.KafkaInstance.CreateACL(ctx, admin, *externalUserCR.Spec.Username, newAccess); err != nil {
 			log.Error(err, "Couldn't create ACLs")
 			return err
 		}

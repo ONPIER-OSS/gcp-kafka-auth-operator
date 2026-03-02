@@ -2,6 +2,7 @@ package kafkaconfig
 
 import (
 	"fmt"
+
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
 )
 

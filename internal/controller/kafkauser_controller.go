@@ -86,9 +86,17 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	reconcileResultRepeat := reconcile.Result{RequeueAfter: r.Opts.ReconcilePeriod, Requeue: true}
 	reconcileResultNoRepeat := reconcile.Result{Requeue: false}
 
+	// Create kafka admin
+	admin, err := r.Opts.KafkaInstance.CreateAdmin(ctx)
+	if err != nil {
+		log.Error(err, "Couldn't create admin")
+		return ctrl.Result{}, err
+	}
+	defer admin.Close()
+
 	// Get the object from the k8s api
 	userCR := &gcpkafkav1alpha1.KafkaUser{}
-	err := r.Get(ctx, req.NamespacedName, userCR)
+	err = r.Get(ctx, req.NamespacedName, userCR)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return reconcileResultNoRepeat, nil
@@ -98,7 +106,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if userCR.DeletionTimestamp != nil {
-		if err := r.delete(ctx, userCR); err != nil {
+		if err := r.delete(ctx, admin, userCR); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
@@ -291,7 +299,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	if userCR.Status.KafkaUserState.ACLs {
 		log.Info("ACLs are configured, checking")
-		currentAccess, err := r.listACLs(ctx, userCR.Status.SAEmail)
+		currentAccess, err := r.listACLs(ctx, admin, userCR.Status.SAEmail)
 		if err != nil {
 			return reconcileResultNoRepeat, err
 		}
@@ -303,7 +311,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		var desiredAccess []*kafkawrap.TopicAccess
 
 		if len(userCR.Spec.ClusterAccess) > 0 {
-			topics, err := r.Opts.KafkaInstance.ListTopics(ctx, true)
+			topics, err := r.Opts.KafkaInstance.ListTopics(ctx, admin, true)
 			if err != nil {
 				return reconcileResultRepeat, err
 			}
@@ -337,7 +345,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	} else {
 		// Update the ACLs
 		log.Info("Updating ACLs")
-		if err := r.updateACLs(ctx, userCR); err != nil {
+		if err := r.updateACLs(ctx, admin, userCR); err != nil {
 			return reconcileResultRepeat, err
 		}
 		userCR.SetFinalizers(helpers.SliceAppendIfMissing(
@@ -403,7 +411,7 @@ func (r *KafkaUserReconciler) findKafkaUserForServiceAccount(ctx context.Context
 }
 
 // Handle cases when resource is deleted
-func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {
+func (r *KafkaUserReconciler) delete(ctx context.Context, admin *kafka.AdminClient, userCR *gcpkafkav1alpha1.KafkaUser) error {
 	log := logf.FromContext(ctx)
 	log.Info("Handle resource deletion")
 	// Service accounts have limited name length, we must make sure
@@ -477,7 +485,7 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 	}
 
 	if len(userCR.Spec.ClusterAccess) == 0 {
-		if err := r.updateACLs(ctx, userCR); err != nil {
+		if err := r.updateACLs(ctx, admin, userCR); err != nil {
 			log.Error(err, "Couldn't update ACLs")
 			return err
 		}
@@ -527,11 +535,11 @@ func findAccessDiff(first, second []*kafkawrap.TopicAccess) (result []*kafkawrap
 	return
 }
 
-func (r *KafkaUserReconciler) listACLs(ctx context.Context, username string) ([]*kafkawrap.TopicAccess, error) {
+func (r *KafkaUserReconciler) listACLs(ctx context.Context, admin *kafka.AdminClient, username string) ([]*kafkawrap.TopicAccess, error) {
 	// Get all the topics that are applied to the current user
 	log := logf.FromContext(ctx)
 	log.Info("Listing the ACLs", "username", username)
-	currentAccess, err := r.Opts.KafkaInstance.ListACLs(ctx, username)
+	currentAccess, err := r.Opts.KafkaInstance.ListACLs(ctx, admin, username)
 	if err != nil {
 		log.Error(err, "Couldn't list ACLs")
 		return nil, err
@@ -539,12 +547,12 @@ func (r *KafkaUserReconciler) listACLs(ctx context.Context, username string) ([]
 	return currentAccess, nil
 }
 
-func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) (err error) {
+func (r *KafkaUserReconciler) updateACLs(ctx context.Context, admin *kafka.AdminClient, userCR *gcpkafkav1alpha1.KafkaUser) (err error) {
 	log := logf.FromContext(ctx)
 	var desiredAccess []*kafkawrap.TopicAccess
 
 	if len(userCR.Spec.ClusterAccess) > 0 {
-		topics, err := r.Opts.KafkaInstance.ListTopics(ctx, true)
+		topics, err := r.Opts.KafkaInstance.ListTopics(ctx, admin, true)
 		if err != nil {
 			return err
 		}
@@ -566,7 +574,7 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 
 	// Append the operator user to every topic, so it doesn't lose access
 	for _, topic := range desiredAccess {
-		if err := r.Opts.KafkaInstance.CreateACL(ctx, r.Opts.AdminUserEmail, []*kafkawrap.TopicAccess{{
+		if err := r.Opts.KafkaInstance.CreateACL(ctx, admin, r.Opts.AdminUserEmail, []*kafkawrap.TopicAccess{{
 			Topic:     topic.Topic,
 			Operation: kafka.ACLOperationAll,
 		}}); err != nil {
@@ -574,7 +582,7 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 		}
 	}
 
-	currentAccess, err := r.listACLs(ctx, userCR.Status.SAEmail)
+	currentAccess, err := r.listACLs(ctx, admin, userCR.Status.SAEmail)
 	if err != nil {
 		return err
 	}
@@ -586,13 +594,13 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 	log.Info("ACLs are marked for creating", "amount", len(newAccess))
 
 	if len(delAccess) > 0 {
-		if err := r.Opts.KafkaInstance.DeleteACL(ctx, userCR.Status.SAEmail, delAccess); err != nil {
+		if err := r.Opts.KafkaInstance.DeleteACL(ctx, admin, userCR.Status.SAEmail, delAccess); err != nil {
 			log.Error(err, "Couldn't delete ACLs")
 			return err
 		}
 	}
 	if len(newAccess) > 0 {
-		if err := r.Opts.KafkaInstance.CreateACL(ctx, userCR.Status.SAEmail, newAccess); err != nil {
+		if err := r.Opts.KafkaInstance.CreateACL(ctx, admin, userCR.Status.SAEmail, newAccess); err != nil {
 			log.Error(err, "Couldn't create ACLs")
 			return err
 		}

@@ -1,21 +1,11 @@
 package kafkawrap
 
 import (
-	"context"
-	kafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	kafkaconfig "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka/config"
 )
 
 type KafkaConfluent struct {
-	AdminClient *kafka.AdminClient
+	ConfigProvider kafkaconfig.KafkaConfigImpl
 }
 
 type KafkaDummy struct{}
-
-type KafkaImpl interface {
-	CreateACL(ctx context.Context, username string, access []*TopicAccess) error
-	DeleteACL(ctx context.Context, username string, access []*TopicAccess) error
-	CreateTopic(ctx context.Context, name string, numPartition, replicationFactor int, config map[string]string) error
-	RemoveTopic(ctx context.Context, name string) error
-	ListTopics(ctx context.Context, hideInternal bool) ([]string, error)
-	ListACLs(ctx context.Context, user string) ([]*TopicAccess, error)
-}

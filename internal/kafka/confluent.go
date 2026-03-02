@@ -4,17 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
+
 	kafkaconfig "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka/config"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
 	kafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"strings"
-	"time"
 )
 
 func NewKafkaConfluent(ctx context.Context, env, region, bootstrapServer string) (KafkaImpl, error) {
-	log := logf.FromContext(ctx)
 
 	kafkaInstance := &KafkaConfluent{}
 
@@ -23,18 +22,18 @@ func NewKafkaConfluent(ctx context.Context, env, region, bootstrapServer string)
 		return nil, err
 	}
 
-	admin, err := configProvider.CreateAdmin(ctx)
-	if err != nil {
-		log.Error(err, "Couldn't create admin")
-		return nil, err
-	}
-	kafkaInstance.AdminClient = admin
+	kafkaInstance.ConfigProvider = configProvider
 	return kafkaInstance, nil
 }
 
+func (kc *KafkaConfluent) CreateAdmin(ctx context.Context) (*kafka.AdminClient, error) {
+	return kc.ConfigProvider.CreateAdmin(ctx)
+}
+
 // CreateTopic implements KafkaImpl.
-func (kc *KafkaConfluent) CreateTopic(ctx context.Context, name string, numPartitions, replicationFactor int, config map[string]string) error {
+func (kc *KafkaConfluent) CreateTopic(ctx context.Context, admin *kafka.AdminClient, name string, numPartitions, replicationFactor int, config map[string]string) error {
 	log := log.FromContext(ctx)
+
 	topic := kafka.TopicSpecification{
 		Topic:             name,
 		NumPartitions:     numPartitions,
@@ -42,7 +41,7 @@ func (kc *KafkaConfluent) CreateTopic(ctx context.Context, name string, numParti
 		Config:            config,
 	}
 	topics := []kafka.TopicSpecification{topic}
-	res, err := kc.AdminClient.CreateTopics(ctx, topics, kafka.SetAdminOperationTimeout(time.Minute*2))
+	res, err := admin.CreateTopics(ctx, topics, kafka.SetAdminOperationTimeout(time.Minute*2))
 	if err != nil {
 		log.Error(err, "Couldn't remove ACLs")
 		return err
@@ -52,9 +51,10 @@ func (kc *KafkaConfluent) CreateTopic(ctx context.Context, name string, numParti
 }
 
 // RemoveTopic implements KafkaImpl.
-func (kc *KafkaConfluent) RemoveTopic(ctx context.Context, name string) error {
+func (kc *KafkaConfluent) RemoveTopic(ctx context.Context, admin *kafka.AdminClient, name string) error {
 	log := log.FromContext(ctx)
-	res, err := kc.AdminClient.DeleteTopics(ctx, []string{name}, kafka.SetAdminOperationTimeout(time.Minute*2))
+
+	res, err := admin.DeleteTopics(ctx, []string{name}, kafka.SetAdminOperationTimeout(time.Minute*2))
 	if err != nil {
 		log.Error(err, "Couldn't remove ACLs")
 		return err
@@ -96,7 +96,7 @@ func ParseTopicAccess(access *TopicAccess) (topic, role string, err error) {
 	}
 }
 
-func (kc *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []*TopicAccess) (err error) {
+func (kc *KafkaConfluent) DeleteACL(ctx context.Context, admin *kafka.AdminClient, user string, access []*TopicAccess) (err error) {
 	log := log.FromContext(ctx)
 
 	principal := fmt.Sprintf("User:%s", user)
@@ -113,7 +113,7 @@ func (kc *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []*
 		}
 		bindingFilters = append(bindingFilters, aclsToDelete)
 	}
-	_, err = kc.AdminClient.DeleteACLs(ctx, bindingFilters)
+	_, err = admin.DeleteACLs(ctx, bindingFilters)
 	if err != nil {
 		log.Error(err, "Couldn't remove ACLs")
 		return err
@@ -121,7 +121,7 @@ func (kc *KafkaConfluent) DeleteACL(ctx context.Context, user string, access []*
 	return nil
 }
 
-func (kc *KafkaConfluent) CreateACL(ctx context.Context, user string, access []*TopicAccess) (err error) {
+func (kc *KafkaConfluent) CreateACL(ctx context.Context, admin *kafka.AdminClient, user string, access []*TopicAccess) (err error) {
 	log := log.FromContext(ctx)
 
 	principal := fmt.Sprintf("User:%s", user)
@@ -138,7 +138,7 @@ func (kc *KafkaConfluent) CreateACL(ctx context.Context, user string, access []*
 		}
 		bindings = append(bindings, binding)
 	}
-	_, err = kc.AdminClient.CreateACLs(ctx, bindings)
+	_, err = admin.CreateACLs(ctx, bindings)
 	if err != nil {
 		log.Error(err, "Couldn't create ACLs")
 		return err
@@ -148,9 +148,10 @@ func (kc *KafkaConfluent) CreateACL(ctx context.Context, user string, access []*
 }
 
 // ListTopics implements KafkaImpl.
-func (kc *KafkaConfluent) ListTopics(ctx context.Context, hideInternal bool) ([]string, error) {
+func (kc *KafkaConfluent) ListTopics(ctx context.Context, admin *kafka.AdminClient, hideInternal bool) ([]string, error) {
 	log := log.FromContext(ctx)
-	metadata, err := kc.AdminClient.GetMetadata(nil, true, 30)
+
+	metadata, err := admin.GetMetadata(nil, true, 30)
 	if err != nil {
 		log.Error(err, "Couldn't get metadata")
 		return nil, err
@@ -168,7 +169,7 @@ func (kc *KafkaConfluent) ListTopics(ctx context.Context, hideInternal bool) ([]
 	return out, nil
 }
 
-func (kc *KafkaConfluent) ListACLs(ctx context.Context, user string) ([]*TopicAccess, error) {
+func (kc *KafkaConfluent) ListACLs(ctx context.Context, admin *kafka.AdminClient, user string) ([]*TopicAccess, error) {
 	log := log.FromContext(ctx)
 
 	principal := fmt.Sprintf("User:%s", user)
@@ -180,7 +181,7 @@ func (kc *KafkaConfluent) ListACLs(ctx context.Context, user string) ([]*TopicAc
 		PermissionType:      kafka.ACLPermissionTypeAllow,
 		Host:                "*",
 	}
-	res, err := kc.AdminClient.DescribeACLs(ctx, filter)
+	res, err := admin.DescribeACLs(ctx, filter)
 	if err != nil {
 		log.Error(err, "Couldn't list ACLs")
 		return nil, err

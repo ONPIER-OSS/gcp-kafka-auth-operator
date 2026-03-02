@@ -1,22 +1,22 @@
 package cloud
 
 import (
-	"cloud.google.com/go/iam/apiv1/iampb"
-	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	"context"
 	"errors"
 	"fmt"
 	"reflect"
 
+	"cloud.google.com/go/iam/apiv1/iampb"
+	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
+
+	"slices"
+
 	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
-	"github.com/stretchr/testify/assert"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
 	corev1 "k8s.io/api/core/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"slices"
-	"testing"
 )
 
 // GetIAMBindings implements CloudImpl.
@@ -149,10 +149,7 @@ func (g *GCloud) EqualPermissions(ctx context.Context, want, have *DesiredPermis
 	log.Info("Checking if desired permissions are applied")
 	slices.Sort(want.Roles)
 	slices.Sort(have.Roles)
-	if !reflect.DeepEqual(want, have) {
-		return false
-	}
-	return true
+	return reflect.DeepEqual(want, have)
 }
 
 func (g *GCloud) DeletePermissions(ctx context.Context, identity *Identity) error {
@@ -440,30 +437,4 @@ func (g *GCloud) BuildDesiredPermissions(ctx context.Context, userCR *gcpkafkav1
 	return &DesiredPermissions{
 		Roles: grantedRoles,
 	}, nil
-}
-
-func TestCheckCleanupPolicies(t *testing.T) {
-	saEmail := "test@test.test"
-	policy := &iampb.Policy{
-		Version: 0,
-		Bindings: []*iampb.Binding{
-			{
-				Role:    "test1",
-				Members: []string{"check@check.check", "test@test.test"},
-			},
-			{
-				Role:    "test2",
-				Members: []string{"test@test.test"},
-			},
-			{
-				Role:    "test3",
-				Members: []string{"check@check.check"},
-			},
-		},
-	}
-
-	newPolicy := cleanUpPolicy(context.TODO(), saEmail, policy)
-	assert.Equal(t, []string{"check@check.check"}, newPolicy.Bindings[0])
-	assert.Equal(t, []string{}, newPolicy.Bindings[1])
-	assert.Equal(t, []string{"check@check.check"}, newPolicy.Bindings[2])
 }

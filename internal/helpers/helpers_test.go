@@ -22,8 +22,10 @@ func TestGetHashFromKafkaUserEqual(t *testing.T) {
 			Topic: "t1",
 			Role:  "readOnly",
 		}},
-		ExtraRoles: []string{
-			"test",
+		ExtraRoles: []gcpkafkav1alpha1.ExtraRole{
+			{
+				Name: "test",
+			},
 		},
 	}
 
