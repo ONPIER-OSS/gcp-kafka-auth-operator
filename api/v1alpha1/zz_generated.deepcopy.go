@@ -21,7 +21,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -334,7 +334,7 @@ func (in *KafkaUserSpec) DeepCopyInto(out *KafkaUserSpec) {
 	}
 	if in.ExtraRoles != nil {
 		in, out := &in.ExtraRoles, &out.ExtraRoles
-		*out = make([]string, len(*in))
+		*out = make([]ExtraRole, len(*in))
 		copy(*out, *in)
 	}
 }

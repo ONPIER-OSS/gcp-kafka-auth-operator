@@ -2,23 +2,26 @@ package cloud
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"slices"
+	"reflect"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
 	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
+
+	"slices"
+
+	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
+	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iam/v1"
+	corev1 "k8s.io/api/core/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type GCloud struct {
-	ProjectID string
-}
-
 // GetIAMBindings implements CloudImpl.
 // TODO: It should be possible to use the googleapi lib
-func (g *GCloud) GetIAMBindings(ctx context.Context, cloudSaID string) ([]string, error) {
+func (g *GCloud) GetPermissions(ctx context.Context, identity *Identity) (*DesiredPermissions, error) {
 	log := logf.FromContext(ctx)
 	log.Info("Getting IAM bindings")
 
@@ -45,7 +48,7 @@ func (g *GCloud) GetIAMBindings(ctx context.Context, cloudSaID string) ([]string
 		return nil, err
 	}
 
-	member := fmt.Sprintf("serviceAccount:%s", cloudSaID)
+	member := fmt.Sprintf("serviceAccount:%s", identity.Identifier)
 	var result []string
 	for _, policy := range rawPolicy.Bindings {
 		if slices.Contains(policy.Members, member) {
@@ -53,14 +56,16 @@ func (g *GCloud) GetIAMBindings(ctx context.Context, cloudSaID string) ([]string
 		}
 	}
 
-	return result, nil
+	return &DesiredPermissions{
+		Roles: result,
+	}, nil
 }
 
 // SetIAMBindings implements CloudImpl.
-func (g *GCloud) SetIAMBindings(ctx context.Context, cloudSaID string, roles []string) error {
+func (g *GCloud) SetPermissions(ctx context.Context, identity *Identity, permissions *DesiredPermissions) error {
 	log := logf.FromContext(ctx)
 	log.Info("Getting kafka IAM bindings")
-	member := fmt.Sprintf("serviceAccount:%s", cloudSaID)
+	member := fmt.Sprintf("serviceAccount:%s", identity.Identifier)
 	// TODO: Remove the copy-pasted code, see the GetIAMBindings
 	client, err := resourcemanager.NewProjectsClient(ctx)
 	if err != nil {
@@ -105,12 +110,12 @@ func (g *GCloud) SetIAMBindings(ctx context.Context, cloudSaID string, roles []s
 	}
 	updatedPolicy = cleanUpPolicy(ctx, member, rawPolicyNew)
 
-	for _, role := range roles {
+	for _, role := range permissions.Roles {
 		added := false
 		for _, binding := range updatedPolicy.Bindings {
 			// Always add a readWriteRole, becase the real access is managed by ACLs
 			if binding.Role == role {
-				log.Info("Adding a new member to a role", "member", cloudSaID, "role", role)
+				log.Info("Adding a new member to a role", "member", identity.Identifier, "role", role)
 				binding.Members = append(binding.Members, member)
 				added = true
 			}
@@ -139,9 +144,63 @@ func (g *GCloud) SetIAMBindings(ctx context.Context, cloudSaID string, roles []s
 	return nil
 }
 
+func (g *GCloud) EqualPermissions(ctx context.Context, want, have *DesiredPermissions) bool {
+	log := logf.FromContext(ctx)
+	log.Info("Checking if desired permissions are applied")
+	slices.Sort(want.Roles)
+	slices.Sort(have.Roles)
+	return reflect.DeepEqual(want, have)
+}
+
+func (g *GCloud) DeletePermissions(ctx context.Context, identity *Identity) error {
+	log := logf.FromContext(ctx)
+	log.Info("Deleting the kafka IAM binding")
+
+	client, err := resourcemanager.NewProjectsClient(ctx)
+	if err != nil {
+		log.Error(err, "Failed to create client")
+		return err
+	}
+	defer func(client *resourcemanager.ProjectsClient) {
+		if err := client.Close(); err != nil {
+			log.Error(err, "Couldn't close the google client")
+		}
+	}(client)
+
+	// Get the current IAM policy.
+	getRequest := &iampb.GetIamPolicyRequest{
+		Resource: "projects/" + g.ProjectID,
+		Options: &iampb.GetPolicyOptions{
+			RequestedPolicyVersion: 3,
+		},
+	}
+
+	rawPolicy, err := client.GetIamPolicy(ctx, getRequest)
+	if err != nil {
+		log.Error(err, "Failed to get IAM policy")
+		return err
+	}
+	serviceAccountEmail := identity.Identifier
+	updatedPolicy := cleanUpPolicy(ctx, serviceAccountEmail, rawPolicy)
+
+	log.Info("Updating bindings")
+	// Set the updated IAM policy.
+	setRequest := &iampb.SetIamPolicyRequest{
+		Resource: "projects/" + g.ProjectID,
+		Policy:   updatedPolicy,
+	}
+	_, err = client.SetIamPolicy(ctx, setRequest)
+	if err != nil {
+		log.Error(err, "Failed to set IAM policy")
+		return err
+	}
+
+	return nil
+}
+
 // AddWorkloadIdentityBinding implements CloudImpl.
-func (g *GCloud) AddWorkloadIdentityBinding(ctx context.Context, k8sSa string, cloudSa string) error {
-	log := logf.FromContext(ctx).WithValues("cloudSA", cloudSa, "k8sSa", k8sSa)
+func (g *GCloud) AddWorkloadIdentity(ctx context.Context, k8sNs, k8sSa string, identityName string) error {
+	log := logf.FromContext(ctx).WithValues("cloudSA", identityName, "k8sNs", k8sNs, "k8sSa", k8sSa)
 	log.Info("Adding workload identity binding")
 
 	request := &iam.SetIamPolicyRequest{
@@ -149,7 +208,7 @@ func (g *GCloud) AddWorkloadIdentityBinding(ctx context.Context, k8sSa string, c
 			Bindings: []*iam.Binding{
 				{
 					Members: []string{
-						fmt.Sprintf("serviceAccount:%s.svc.id.goog[%s]", g.ProjectID, k8sSa),
+						fmt.Sprintf("serviceAccount:%s.svc.id.goog[%s/%s]", g.ProjectID, k8sNs, k8sSa),
 					},
 					Role: "roles/iam.workloadIdentityUser",
 				},
@@ -162,7 +221,7 @@ func (g *GCloud) AddWorkloadIdentityBinding(ctx context.Context, k8sSa string, c
 		log.Error(err, "Couldn't initialize the IAM service")
 		return err
 	}
-	_, err = service.Projects.ServiceAccounts.SetIamPolicy(cloudSa, request).Do()
+	_, err = service.Projects.ServiceAccounts.SetIamPolicy(identityName, request).Do()
 	if err != nil {
 		log.Info("Coudln't set the Iam Policy", "error", err)
 		return err
@@ -171,31 +230,30 @@ func (g *GCloud) AddWorkloadIdentityBinding(ctx context.Context, k8sSa string, c
 }
 
 // CheckWorkloadIdentityBinding implements CloudImpl.
-func (g *GCloud) CheckWorkloadIdentityBinding(ctx context.Context, k8sSa string, cloudSa string) error {
-	log := logf.FromContext(ctx).WithValues("cloudSA", cloudSa, "k8sSa", k8sSa)
+func (g *GCloud) CheckWorkloadIdentity(ctx context.Context, k8sNs, k8sSa, identityName string) error {
+	log := logf.FromContext(ctx).WithValues("cloudSA", identityName, "k8sNs", k8sNs, "k8sSa", k8sSa)
 	log.Info("Checking workload identity binding")
 	service, err := iam.NewService(ctx)
 	if err != nil {
 		log.Error(err, "Couldn't initialize the IAM service")
 		return err
 	}
-	policy, err := service.Projects.ServiceAccounts.GetIamPolicy(cloudSa).Do()
+	policy, err := service.Projects.ServiceAccounts.GetIamPolicy(identityName).Do()
 	if err != nil {
 		return err
 	}
 	for _, binding := range policy.Bindings {
 		if binding.Role == "roles/iam.workloadIdentityUser" {
-			if slices.Contains(binding.Members, fmt.Sprintf("serviceAccount:%s.svc.id.goog[%s]", g.ProjectID, k8sSa)) {
+			if slices.Contains(binding.Members, fmt.Sprintf("serviceAccount:%s.svc.id.goog[%s/%s]", g.ProjectID, k8sNs, k8sSa)) {
 				return nil
 			}
 		}
 	}
-
 	return ErrNotFound
 }
 
 // GetServiceAccount implements CloudImpl.
-func (g *GCloud) GetServiceAccount(ctx context.Context, name string) (*ServiceAccount, error) {
+func (g *GCloud) GetIdentity(ctx context.Context, name string) (*Identity, error) {
 	log := logf.FromContext(ctx).WithValues("name", name)
 	log.Info("Getting a service account")
 
@@ -205,7 +263,7 @@ func (g *GCloud) GetServiceAccount(ctx context.Context, name string) (*ServiceAc
 		return nil, err
 	}
 
-	serviceAccount := &ServiceAccount{
+	serviceAccount := &Identity{
 		Name:       "",
 		Identifier: "",
 	}
@@ -235,14 +293,14 @@ func (g *GCloud) GetServiceAccount(ctx context.Context, name string) (*ServiceAc
 }
 
 // CreateServiceAccount implements CloudImpl.
-func (g *GCloud) CreateServiceAccount(ctx context.Context, name string) (*ServiceAccount, error) {
-	log := logf.FromContext(ctx).WithValues("name", name)
+func (g *GCloud) CreateIdentity(ctx context.Context, identityName string) (*Identity, error) {
+	log := logf.FromContext(ctx).WithValues("name", identityName)
 	log.Info("Creating a service account")
 
 	request := &iam.CreateServiceAccountRequest{
-		AccountId: name,
+		AccountId: identityName,
 		ServiceAccount: &iam.ServiceAccount{
-			DisplayName: name,
+			DisplayName: identityName,
 			Description: "Managed by the kafka user operator",
 		},
 	}
@@ -253,7 +311,7 @@ func (g *GCloud) CreateServiceAccount(ctx context.Context, name string) (*Servic
 		return nil, err
 	}
 
-	result := &ServiceAccount{}
+	result := &Identity{}
 	sa, err := service.Projects.ServiceAccounts.Create("projects/"+g.ProjectID, request).Do()
 	if err != nil {
 		if errCasted, ok := err.(*googleapi.Error); ok {
@@ -262,7 +320,7 @@ func (g *GCloud) CreateServiceAccount(ctx context.Context, name string) (*Servic
 			if errCasted.Code == 409 {
 				log.Info("Service Account already exists, re-using")
 			}
-			result, err = g.GetServiceAccount(ctx, name)
+			result, err = g.GetIdentity(ctx, identityName)
 			if err != nil {
 				return nil, err
 			}
@@ -279,9 +337,38 @@ func (g *GCloud) CreateServiceAccount(ctx context.Context, name string) (*Servic
 	return result, nil
 }
 
-func NewGCloudInstance(projectID string) CloudImpl {
+func (g *GCloud) DeleteIdentity(ctx context.Context, identity *Identity) error {
+	serviceAccountEmail := identity.Identifier
+	log := logf.FromContext(ctx)
+	log.Info("Deleting a service account", "n", serviceAccountEmail)
+
+	service, err := iam.NewService(ctx)
+	if err != nil {
+		log.Error(err, "Couldn't initialize the IAM service")
+		return err
+	}
+	_, err = service.Projects.ServiceAccounts.
+		Delete(fmt.Sprintf("projects/%s/serviceAccounts/%s", g.ProjectID, serviceAccountEmail)).Do()
+	if err != nil {
+		if errCasted, ok := err.(*googleapi.Error); ok {
+			// If doesn't exist
+			// https://cloud.google.com/pubsub/docs/reference/error-codes
+			if errCasted.Code == 404 {
+				log.Info("Service Account is not found, skipping")
+			}
+		} else {
+			log.Error(err, "Couldn't create a service account")
+			return err
+		}
+	}
+
+	return nil
+}
+
+func NewGCloudInstance(projectID, clientRole string) CloudImpl {
 	return &GCloud{
-		ProjectID: projectID,
+		ProjectID:  projectID,
+		ClientRole: clientRole,
 	}
 }
 
@@ -305,4 +392,49 @@ func cleanUpPolicy(ctx context.Context, memberName string, policy *iampb.Policy)
 		}
 	}
 	return newPolicy
+}
+
+func (g *GCloud) GetSAAnnotations(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) map[string]string {
+	log := logf.FromContext(ctx)
+	log.Info("Getting service account annotations")
+	return map[string]string{
+		consts.ANNOTATION_GKE_EMAIL: userCR.Status.SAEmail,
+	}
+}
+
+func (g *GCloud) IsSAReady(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser, sa *corev1.ServiceAccount) bool {
+	log := logf.FromContext(ctx)
+	log.Info("Checking if the service account is ready")
+	email, ok := sa.GetAnnotations()[consts.ANNOTATION_GKE_EMAIL]
+	return ok && email == userCR.Status.SAEmail
+}
+
+func (g *GCloud) CleanupSA(ctx context.Context, sa *corev1.ServiceAccount) {
+	log := logf.FromContext(ctx)
+	log.Info("Deleting service account annotation")
+	if sa.Annotations == nil {
+		return
+	}
+	delete(sa.Annotations, consts.ANNOTATION_GKE_EMAIL)
+}
+
+func (g *GCloud) BuildDesiredPermissions(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser, allowedRoles []string) (*DesiredPermissions, error) {
+	log := logf.FromContext(ctx)
+	log.Info("Building a list of desired roles")
+	grantedRoles := []string{g.ClientRole}
+
+	if len(userCR.Spec.ExtraRoles) > 0 {
+		for _, extraRole := range userCR.Spec.ExtraRoles {
+			if !slices.Contains(allowedRoles, extraRole.Name) {
+				err := errors.New("extra permission is not allowed")
+				errMsg := fmt.Sprintf("%s permissions needs to be added to allowed permissions", extraRole.Name)
+				log.Error(err, errMsg)
+				continue
+			}
+			grantedRoles = append(grantedRoles, extraRole.Name)
+		}
+	}
+	return &DesiredPermissions{
+		Roles: grantedRoles,
+	}, nil
 }

@@ -17,4 +17,10 @@ const (
 
 const (
 	ANNOTATION_GKE_EMAIL = "iam.gke.io/gcp-service-account"
+	ANNOTATION_AWS_IRSA  = "eks.amazonaws.com/role-arn"
+)
+
+const (
+	EnvAWS = "AWS"
+	EnvGCP = "GCP"
 )

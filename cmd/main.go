@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -26,6 +27,11 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
+	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/cloud"
+	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/controller"
+	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/helpers"
+	kafkawrap "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -36,11 +42,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-
-	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
-	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/cloud"
-	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/controller"
-	kafkawrap "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -57,14 +58,17 @@ func init() {
 }
 
 func main() {
+	ctx := context.Background()
+
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	var projectID string
+	var accountID string
 	var region string
-	var kafkaCluster string
+	var bootstrapServer string
+	var mskARN string
 	var clientRole string
 	var adminUserEmail string
 	var extraPermissionsCM string
@@ -72,6 +76,7 @@ func main() {
 	var dummyDeployment bool
 	var dummyConfig string
 	var tlsOpts []func(*tls.Config)
+	var oidcID string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -83,11 +88,13 @@ func main() {
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&projectID, "gcp-project-id", "0", "The ID of the google project.")
-	flag.StringVar(&region, "region", "europe-west3", "A region where the kafka cluster is deployed.")
-	flag.StringVar(&kafkaCluster, "kafka-cluster", "", "The name of the kafka cluster.")
-	flag.StringVar(&clientRole, "client-role", "roles/managedkafka.client", "ID of the role for kafka client access.")
-	flag.StringVar(&adminUserEmail, "admin-user-email", "", "An email of the admin service account")
+	flag.StringVar(&accountID, "account-id", "0", "The ID of the cloud account. google project id or aws account id")
+	flag.StringVar(&region, "region", "", "A gcp or aws region where the kafka cluster is deployed.")
+	flag.StringVar(&bootstrapServer, "bootstrap-server", "", "The url of the kafka cluster.")
+	flag.StringVar(&mskARN, "msk-arn", "", "The ARN of the AWS MSK cluster.")
+	flag.StringVar(&clientRole, "client-role", "", "The gcp role for kafka client access.")
+	flag.StringVar(&adminUserEmail, "admin-user", "", "email of the admin service account in gcp")
+	flag.StringVar(&oidcID, "oidc-id", "", "AWS Account OIDC ID")
 	flag.StringVar(&extraPermissionsCM,
 		"extra-permission-cm",
 		"",
@@ -188,6 +195,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	env := helpers.DetectEnv(bootstrapServer)
 	var kafkaInstance kafkawrap.KafkaImpl
 	var cloudInstance cloud.CloudImpl
 	if dummyDeployment {
@@ -198,12 +206,16 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		kafkaInstance, err = kafkawrap.NewKafkaConfluent(projectID, kafkaCluster, region)
+		kafkaInstance, err = kafkawrap.NewKafkaConfluent(ctx, env, region, bootstrapServer)
 		if err != nil {
-			setupLog.Error(err, "couldn't create a kafka admin client")
+			setupLog.Error(err, "Couldn't create the kafka instance")
 			os.Exit(1)
 		}
-		cloudInstance = cloud.NewGCloudInstance(projectID)
+
+		cloudInstance, err = cloud.NewCloudInstance(ctx, env, accountID, clientRole, oidcID, mskARN)
+		if err != nil {
+			setupLog.Error(err, "Couldn't create the cloud instance")
+		}
 	}
 
 	if err = (&controller.KafkaUserReconciler{
@@ -212,7 +224,7 @@ func main() {
 		Recorder: mgr.GetEventRecorderFor("kafkauser-controller"),
 		Opts: &controller.KafkaUserReconcilerOpts{
 			CloudInstance:               cloudInstance,
-			GoogleProject:               projectID,
+			AccountID:                   accountID,
 			ClientRole:                  clientRole,
 			KafkaInstance:               kafkaInstance,
 			AdminUserEmail:              adminUserEmail,

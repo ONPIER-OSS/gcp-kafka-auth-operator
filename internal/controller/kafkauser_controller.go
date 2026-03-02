@@ -23,20 +23,14 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"testing"
 	"time"
 
-	"cloud.google.com/go/iam/apiv1/iampb"
-	resourcemanager "cloud.google.com/go/resourcemanager/apiv3"
 	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/cloud"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/helpers"
 	kafkawrap "github.com/ONPIER-playground/gcp-kafka-auth-operator/internal/kafka"
 	"github.com/ONPIER-playground/gcp-kafka-auth-operator/pkg/consts"
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/stretchr/testify/assert"
-	"google.golang.org/api/googleapi"
-	iam "google.golang.org/api/iam/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 
@@ -62,7 +56,7 @@ type KafkaUserReconciler struct {
 
 type KafkaUserReconcilerOpts struct {
 	// The google project ID
-	GoogleProject               string
+	AccountID                   string
 	ClientRole                  string
 	KafkaInstance               kafkawrap.KafkaImpl
 	CloudInstance               cloud.CloudImpl
@@ -92,9 +86,17 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	reconcileResultRepeat := reconcile.Result{RequeueAfter: r.Opts.ReconcilePeriod, Requeue: true}
 	reconcileResultNoRepeat := reconcile.Result{Requeue: false}
 
+	// Create kafka admin
+	admin, err := r.Opts.KafkaInstance.CreateAdmin(ctx)
+	if err != nil {
+		log.Error(err, "Couldn't create admin")
+		return ctrl.Result{}, err
+	}
+	defer admin.Close()
+
 	// Get the object from the k8s api
 	userCR := &gcpkafkav1alpha1.KafkaUser{}
-	err := r.Get(ctx, req.NamespacedName, userCR)
+	err = r.Get(ctx, req.NamespacedName, userCR)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return reconcileResultNoRepeat, nil
@@ -104,14 +106,14 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 
 	if userCR.DeletionTimestamp != nil {
-		if err := r.delete(ctx, userCR); err != nil {
+		if err := r.delete(ctx, admin, userCR); err != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
 	// Create a service account in the cloud provider
-	cloudSAName := helpers.StringSanitize(
+	identityName := helpers.StringSanitize(
 		fmt.Sprintf("%s-%s", userCR.GetNamespace(), userCR.GetName()), 30,
 	)
 
@@ -126,7 +128,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if userCR.Status.KafkaUserState.CloudSA {
 		log.Info("Cloud service account was created, checking")
 		// If SA is not created set the status.cloudSA to false and return
-		_, err = r.Opts.CloudInstance.GetServiceAccount(ctx, cloudSAName)
+		_, err = r.Opts.CloudInstance.GetIdentity(ctx, identityName)
 		if err != nil {
 			if errors.Is(err, cloud.ErrNotFound) {
 				userCR.Status.KafkaUserState.CloudSA = false
@@ -140,7 +142,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			}
 		}
 	} else {
-		sa, err := r.Opts.CloudInstance.CreateServiceAccount(ctx, cloudSAName)
+		sa, err := r.Opts.CloudInstance.CreateIdentity(ctx, identityName)
 		log.Info("Creating a service account")
 		if err != nil {
 			log.Error(err, "Couldn't create a cloud service account")
@@ -161,15 +163,17 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	}
 
-	k8sSA := fmt.Sprintf("%s/%s", userCR.GetNamespace(), userCR.Spec.ServiceAccountName)
-	cloudSa, err := r.Opts.CloudInstance.GetServiceAccount(ctx, cloudSAName)
+	k8sNS := userCR.GetNamespace()
+	k8sSA := userCR.Spec.ServiceAccountName
+	identity, err := r.Opts.CloudInstance.GetIdentity(ctx, identityName)
 	if err != nil {
 		return reconcileResultRepeat, err
 	}
 	if userCR.Status.KafkaUserState.WorkloadIdentity {
 		log.Info("Workload identity was added, checking")
 		// If Workload Identity is not applied, set the state to false and return
-		if err := r.Opts.CloudInstance.CheckWorkloadIdentityBinding(ctx, k8sSA, cloudSa.Name); err != nil {
+		if err := r.Opts.CloudInstance.CheckWorkloadIdentity(ctx, k8sNS, k8sSA, identity.Name); err != nil {
+			log.Error(err, "Couldn't get workalod identity bindings")
 			if errors.Is(err, cloud.ErrNotFound) {
 				userCR.Status.KafkaUserState.WorkloadIdentity = false
 				userCR.Status.Ready = false
@@ -183,7 +187,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		}
 	} else {
 		log.Info("Adding workload identity")
-		if err := r.Opts.CloudInstance.AddWorkloadIdentityBinding(ctx, k8sSA, cloudSa.Name); err != nil {
+		if err := r.Opts.CloudInstance.AddWorkloadIdentity(ctx, k8sNS, k8sSA, identity.Name); err != nil {
 			return reconcileResultRepeat, err
 		}
 		userCR.SetFinalizers(helpers.SliceAppendIfMissing(
@@ -200,37 +204,26 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcileResultNoRepeat, nil
 	}
 
-	// Prepare granted roles (Currently GCP only)
-	// TODO: Re-design to make it AWS compatible
-	grantedRoles := []string{r.Opts.ClientRole}
-	if len(userCR.Spec.ExtraRoles) > 0 {
-		allowedRoles, err := r.getAllowedPermissions(ctx, userCR.GetName(), userCR.GetNamespace())
-		if err != nil {
-			return reconcileResultRepeat, nil
-		}
-		for _, extraRoles := range userCR.Spec.ExtraRoles {
-			log.Info("Checking if the extra permission is allowed for the user")
-			if !slices.Contains(allowedRoles, extraRoles) {
-				err := errors.New("extra permission is not allowed")
-				errMsg := fmt.Sprintf("%s permissions needs to be added to allowed permissions", extraRoles)
-				r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
-				log.Error(err, errMsg)
-				return reconcileResultRepeat, nil
-			}
-			grantedRoles = append(grantedRoles, extraRoles)
-		}
+	allowedPermissions, err := r.getAllowedPermissions(ctx, userCR.GetName(), userCR.GetNamespace())
+	if err != nil {
+		log.Error(err, "Couldn't get allowed permissions")
+		return reconcileResultRepeat, err
+	}
+
+	want, err := r.Opts.CloudInstance.BuildDesiredPermissions(ctx, userCR, allowedPermissions)
+	if err != nil {
+		return reconcileResultRepeat, err
 	}
 
 	if userCR.Status.KafkaUserState.IamBindings {
-		log.Info("IAM bindings were added, checking", "wanted", grantedRoles)
-		roles, err := r.Opts.CloudInstance.GetIAMBindings(ctx, userCR.Status.SAEmail)
+		log.Info("IAM bindings were added, checking", "wanted", want)
+
+		have, err := r.Opts.CloudInstance.GetPermissions(ctx, identity)
 		if err != nil {
 			return reconcileResultRepeat, err
 		}
-		slices.Sort(roles)
-		slices.Sort(grantedRoles)
-		if !reflect.DeepEqual(roles, grantedRoles) {
-			log.Info("Roles don't match", "applied", roles, "desired", grantedRoles)
+		if !r.Opts.CloudInstance.EqualPermissions(ctx, want, have) {
+			log.Info("Permissions don't match", "applied", have, "desired", want)
 			userCR.Status.KafkaUserState.IamBindings = false
 			userCR.Status.Ready = false
 			if errUpdate := r.updateStatus(ctx, userCR); errUpdate != nil {
@@ -239,8 +232,8 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return reconcileResultNoRepeat, nil
 		}
 	} else {
-		log.Info("Adding IAM bindings", "wanted", grantedRoles)
-		if err := r.Opts.CloudInstance.SetIAMBindings(ctx, userCR.Status.SAEmail, grantedRoles); err != nil {
+		log.Info("Adding IAM bindings", "wanted", want)
+		if err := r.Opts.CloudInstance.SetPermissions(ctx, identity, want); err != nil {
 			return reconcileResultRepeat, err
 		}
 		userCR.SetFinalizers(helpers.SliceAppendIfMissing(
@@ -270,26 +263,28 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return reconcileResultRepeat, err
 	}
 
-	email, ok := k8sServiceAccount.GetAnnotations()[consts.ANNOTATION_GKE_EMAIL]
 	// If annotation is not set, reconcile the user
-	if !ok || email != userCR.Status.SAEmail {
+	if !r.Opts.CloudInstance.IsSAReady(ctx, userCR, k8sServiceAccount) {
 		userCR.Status.KafkaUserState.K8sSA = false
 		userCR.Status.Ready = false
 	}
 	// Update the k8s service account
 	if !userCR.Status.KafkaUserState.K8sSA {
 		log.Info("Updating the k8s service account")
-		k8sServiceAccount.Annotations[consts.ANNOTATION_GKE_EMAIL] = userCR.Status.SAEmail
-
-		err = r.Update(ctx, k8sServiceAccount)
-		if err != nil {
-			errMsg := "Couldn ot annotate a service account"
+		annotations := r.Opts.CloudInstance.GetSAAnnotations(ctx, userCR)
+		if k8sServiceAccount.Annotations == nil {
+			k8sServiceAccount.Annotations = map[string]string{}
+		}
+		for k, v := range annotations {
+			k8sServiceAccount.Annotations[k] = v
+		}
+		if err := r.Update(ctx, k8sServiceAccount); err != nil {
+			errMsg := "Could not ot annotate a service account"
 			r.Recorder.Event(userCR, corev1.EventTypeWarning, "Error", errMsg)
 			userCR.Status.Error = errMsg
 			log.Error(err, errMsg, "name", k8sServiceAccount.GetName())
 			return reconcileResultRepeat, err
 		}
-
 		userCR.SetFinalizers(helpers.SliceAppendIfMissing(
 			userCR.GetFinalizers(),
 			consts.FINALIZER_K8S_SERVICE_ACCOUNT,
@@ -302,10 +297,9 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			return reconcileResultRepeat, err
 		}
 	}
-
 	if userCR.Status.KafkaUserState.ACLs {
 		log.Info("ACLs are configured, checking")
-		currentAccess, err := r.listACLs(ctx, userCR.Status.SAEmail)
+		currentAccess, err := r.listACLs(ctx, admin, userCR.Status.SAEmail)
 		if err != nil {
 			return reconcileResultNoRepeat, err
 		}
@@ -317,7 +311,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		var desiredAccess []*kafkawrap.TopicAccess
 
 		if len(userCR.Spec.ClusterAccess) > 0 {
-			topics, err := r.Opts.KafkaInstance.ListTopics(ctx, true)
+			topics, err := r.Opts.KafkaInstance.ListTopics(ctx, admin, true)
 			if err != nil {
 				return reconcileResultRepeat, err
 			}
@@ -351,7 +345,7 @@ func (r *KafkaUserReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	} else {
 		// Update the ACLs
 		log.Info("Updating ACLs")
-		if err := r.updateACLs(ctx, userCR); err != nil {
+		if err := r.updateACLs(ctx, admin, userCR); err != nil {
 			return reconcileResultRepeat, err
 		}
 		userCR.SetFinalizers(helpers.SliceAppendIfMissing(
@@ -417,23 +411,31 @@ func (r *KafkaUserReconciler) findKafkaUserForServiceAccount(ctx context.Context
 }
 
 // Handle cases when resource is deleted
-func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {
+func (r *KafkaUserReconciler) delete(ctx context.Context, admin *kafka.AdminClient, userCR *gcpkafkav1alpha1.KafkaUser) error {
 	log := logf.FromContext(ctx)
 	log.Info("Handle resource deletion")
 	// Service accounts have limited name length, we must make sure
 	// that we're not exceeding the limit
-	gcpServiceAccountName := helpers.StringSanitize(
+	cloudIdentityName := helpers.StringSanitize(
 		fmt.Sprintf("%s-%s", userCR.GetNamespace(), userCR.GetName()), 30,
 	)
 
-	sa, err := getServiceAccount(ctx, r.Opts.GoogleProject, gcpServiceAccountName, 1)
+	identity, err := r.Opts.CloudInstance.GetIdentity(ctx, cloudIdentityName)
 	if err != nil {
-		log.Info("Couldn't get a service account, continuing", "error", err)
-	} else {
-		if err := deleteServiceAccount(ctx, r.Opts.GoogleProject, sa.Email); err != nil {
-			log.Error(err, "Couldn't delete a service account")
-			return err
+		if errors.Is(err, cloud.ErrNotFound) {
+			return nil
 		}
+		return err
+	}
+
+	if err := r.Opts.CloudInstance.DeletePermissions(ctx, identity); err != nil {
+		log.Error(err, "Couldn't delete permissions")
+		return err
+	}
+
+	if err := r.Opts.CloudInstance.DeleteIdentity(ctx, identity); err != nil {
+		log.Error(err, "Couldn't delete cloud identity")
+		return err
 	}
 
 	userCR.SetFinalizers(helpers.SliceRemoveItem(
@@ -441,10 +443,6 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 		consts.FINALIZER_CLOUD_SERVICE_ACCOUNT,
 	))
 	if err := r.updateObject(ctx, userCR); err != nil {
-		return err
-	}
-	if err := deleteKafkaIAMBinding(ctx, r.Opts.GoogleProject, userCR.Status.SAEmail); err != nil {
-		log.Error(err, "Couldn't add a kafka binding to the project")
 		return err
 	}
 
@@ -470,7 +468,7 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 			return err
 		}
 	} else {
-		delete(k8sSA.Annotations, consts.ANNOTATION_GKE_EMAIL)
+		r.Opts.CloudInstance.CleanupSA(ctx, k8sSA)
 		err = r.Update(ctx, k8sSA)
 		if err != nil {
 			log.Error(err, "Couldn't annotate a service account", "name", k8sSA.GetName())
@@ -487,7 +485,7 @@ func (r *KafkaUserReconciler) delete(ctx context.Context, userCR *gcpkafkav1alph
 	}
 
 	if len(userCR.Spec.ClusterAccess) == 0 {
-		if err := r.updateACLs(ctx, userCR); err != nil {
+		if err := r.updateACLs(ctx, admin, userCR); err != nil {
 			log.Error(err, "Couldn't update ACLs")
 			return err
 		}
@@ -537,11 +535,11 @@ func findAccessDiff(first, second []*kafkawrap.TopicAccess) (result []*kafkawrap
 	return
 }
 
-func (r *KafkaUserReconciler) listACLs(ctx context.Context, username string) ([]*kafkawrap.TopicAccess, error) {
+func (r *KafkaUserReconciler) listACLs(ctx context.Context, admin *kafka.AdminClient, username string) ([]*kafkawrap.TopicAccess, error) {
 	// Get all the topics that are applied to the current user
 	log := logf.FromContext(ctx)
 	log.Info("Listing the ACLs", "username", username)
-	currentAccess, err := r.Opts.KafkaInstance.ListACLs(ctx, username)
+	currentAccess, err := r.Opts.KafkaInstance.ListACLs(ctx, admin, username)
 	if err != nil {
 		log.Error(err, "Couldn't list ACLs")
 		return nil, err
@@ -549,12 +547,12 @@ func (r *KafkaUserReconciler) listACLs(ctx context.Context, username string) ([]
 	return currentAccess, nil
 }
 
-func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) (err error) {
+func (r *KafkaUserReconciler) updateACLs(ctx context.Context, admin *kafka.AdminClient, userCR *gcpkafkav1alpha1.KafkaUser) (err error) {
 	log := logf.FromContext(ctx)
 	var desiredAccess []*kafkawrap.TopicAccess
 
 	if len(userCR.Spec.ClusterAccess) > 0 {
-		topics, err := r.Opts.KafkaInstance.ListTopics(ctx, true)
+		topics, err := r.Opts.KafkaInstance.ListTopics(ctx, admin, true)
 		if err != nil {
 			return err
 		}
@@ -576,7 +574,7 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 
 	// Append the operator user to every topic, so it doesn't lose access
 	for _, topic := range desiredAccess {
-		if err := r.Opts.KafkaInstance.CreateACL(ctx, r.Opts.AdminUserEmail, []*kafkawrap.TopicAccess{{
+		if err := r.Opts.KafkaInstance.CreateACL(ctx, admin, r.Opts.AdminUserEmail, []*kafkawrap.TopicAccess{{
 			Topic:     topic.Topic,
 			Operation: kafka.ACLOperationAll,
 		}}); err != nil {
@@ -584,7 +582,7 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 		}
 	}
 
-	currentAccess, err := r.listACLs(ctx, userCR.Status.SAEmail)
+	currentAccess, err := r.listACLs(ctx, admin, userCR.Status.SAEmail)
 	if err != nil {
 		return err
 	}
@@ -596,13 +594,13 @@ func (r *KafkaUserReconciler) updateACLs(ctx context.Context, userCR *gcpkafkav1
 	log.Info("ACLs are marked for creating", "amount", len(newAccess))
 
 	if len(delAccess) > 0 {
-		if err := r.Opts.KafkaInstance.DeleteACL(ctx, userCR.Status.SAEmail, delAccess); err != nil {
+		if err := r.Opts.KafkaInstance.DeleteACL(ctx, admin, userCR.Status.SAEmail, delAccess); err != nil {
 			log.Error(err, "Couldn't delete ACLs")
 			return err
 		}
 	}
 	if len(newAccess) > 0 {
-		if err := r.Opts.KafkaInstance.CreateACL(ctx, userCR.Status.SAEmail, newAccess); err != nil {
+		if err := r.Opts.KafkaInstance.CreateACL(ctx, admin, userCR.Status.SAEmail, newAccess); err != nil {
 			log.Error(err, "Couldn't create ACLs")
 			return err
 		}
@@ -639,166 +637,6 @@ func (r *KafkaUserReconciler) getAllowedPermissions(ctx context.Context, name, n
 	}
 
 	return helpers.StringToSlice(data), nil
-}
-
-func deleteServiceAccount(ctx context.Context, projectID, serviceAccountEmail string) error {
-	log := logf.FromContext(ctx)
-	log.Info("Deleting a service account", "name", serviceAccountEmail)
-
-	service, err := iam.NewService(ctx)
-	if err != nil {
-		log.Error(err, "Couldn't initialize the IAM service")
-		return err
-	}
-	_, err = service.Projects.ServiceAccounts.
-		Delete(fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccountEmail)).Do()
-	if err != nil {
-		if errCasted, ok := err.(*googleapi.Error); ok {
-			// If doesn't exist
-			// https://cloud.google.com/pubsub/docs/reference/error-codes
-			if errCasted.Code == 404 {
-				log.Info("Service Account is not found, skipping")
-			}
-		} else {
-			log.Error(err, "Couldn't create a service account")
-			return err
-		}
-	}
-
-	return nil
-}
-
-func getServiceAccount(ctx context.Context, projectID, serviceAccountName string, attempts int) (*iam.ServiceAccount, error) {
-	log := logf.FromContext(ctx)
-	log.Info("Getting a service account", "name", serviceAccountName)
-	var sa *iam.ServiceAccount
-
-	var err error
-	var service *iam.Service
-
-	service, err = iam.NewService(ctx)
-	if err != nil {
-		log.Error(err, "Couldn't initialize the IAM service")
-		return nil, err
-	}
-
-	// Get SA
-	for i := range attempts {
-		// We need either ID or email to get a service account
-		serviceAccountEmail := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", serviceAccountName, projectID)
-		log.Info("trying to get SA", "try", i, "email", serviceAccountEmail)
-
-		sa, err = service.Projects.ServiceAccounts.
-			Get(fmt.Sprintf("projects/%s/serviceAccounts/%s", projectID, serviceAccountEmail)).Do()
-
-		if err != nil {
-			log.Info("Can't get a service account", "error", err)
-			time.Sleep(time.Second * 15)
-		} else {
-			break
-		}
-	}
-
-	if err != nil {
-		log.Error(err, "couldn't find a service account", "name", serviceAccountName)
-		return nil, err
-	}
-
-	return sa, nil
-}
-
-// This function is removing a service account from the policies,
-// where the service account exists. It's needed for both updating
-// and removing users
-func cleanUpPolicy(ctx context.Context, saEmail string, policy *iampb.Policy) *iampb.Policy {
-	log := logf.FromContext(ctx)
-	newPolicy := policy
-	for _, binding := range newPolicy.Bindings {
-		sa := fmt.Sprintf("serviceAccount:%s", saEmail)
-		if slices.Contains(binding.Members, saEmail) {
-			var newMembers []string
-			for _, member := range binding.Members {
-				if member != saEmail {
-					newMembers = append(newMembers, member)
-				} else {
-					log.Info("Removing member from the policy", "email", sa, "role", binding.Role)
-				}
-			}
-			binding.Members = newMembers
-		}
-	}
-	return newPolicy
-}
-
-func deleteKafkaIAMBinding(ctx context.Context, projectID, serviceAccountEmail string) error {
-	log := logf.FromContext(ctx)
-	log.Info("Deleting the kafka IAM binding")
-
-	client, err := resourcemanager.NewProjectsClient(ctx)
-	if err != nil {
-		log.Error(err, "Failed to create client")
-		return err
-	}
-	defer func(client *resourcemanager.ProjectsClient) {
-		if err := client.Close(); err != nil {
-			log.Error(err, "Couldn't close the google client")
-		}
-	}(client)
-
-	// Get the current IAM policy.
-	getRequest := &iampb.GetIamPolicyRequest{
-		Resource: "projects/" + projectID,
-		Options: &iampb.GetPolicyOptions{
-			RequestedPolicyVersion: 3,
-		},
-	}
-
-	rawPolicy, err := client.GetIamPolicy(ctx, getRequest)
-	if err != nil {
-		log.Error(err, "Failed to get IAM policy")
-		return err
-	}
-	updatedPolicy := cleanUpPolicy(ctx, serviceAccountEmail, rawPolicy)
-
-	log.Info("Updating bindings")
-	// Set the updated IAM policy.
-	setRequest := &iampb.SetIamPolicyRequest{
-		Resource: "projects/" + projectID,
-		Policy:   updatedPolicy,
-	}
-	_, err = client.SetIamPolicy(ctx, setRequest)
-	if err != nil {
-		log.Error(err, "Failed to set IAM policy")
-		return err
-	}
-
-	return nil
-}
-
-func TestCheckCleanupPolicies(t *testing.T) {
-	saEmail := "test@test.test"
-	policy := &iampb.Policy{
-		Version: 0,
-		Bindings: []*iampb.Binding{
-			{
-				Role:    "test1",
-				Members: []string{"check@check.check", "test@test.test"},
-			},
-			{
-				Role:    "test2",
-				Members: []string{"test@test.test"},
-			},
-			{
-				Role:    "test3",
-				Members: []string{"check@check.check"},
-			},
-		},
-	}
-
-	newPolicy := cleanUpPolicy(context.TODO(), saEmail, policy)
-	assert.Equal(t, []string{"check@check.check"}, newPolicy.Bindings[0])
-	assert.Equal(t, []string{}, newPolicy.Bindings[1])
-	assert.Equal(t, []string{"check@check.check"}, newPolicy.Bindings[2])
 }
 
 func (r *KafkaUserReconciler) updateStatus(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) error {

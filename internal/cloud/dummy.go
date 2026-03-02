@@ -5,38 +5,46 @@ import (
 	"errors"
 	"os"
 
+	gcpkafkav1alpha1 "github.com/ONPIER-playground/gcp-kafka-auth-operator/api/v1alpha1"
 	"gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-type Dummy struct {
-	GetServiceAccountErr    string `yaml:"getServiceAccountErr"`
-	GetServiceAccountResult string `yaml:"getServiceAccountResult"`
-	CreateServiceAccountErr string `yaml:"createServiceAccountErr"`
-}
-
 // AddWorkloadIdentityBinding implements CloudImpl.
-func (d *Dummy) AddWorkloadIdentityBinding(ctx context.Context, k8sSa string, cloudSa string) error {
+func (d *Dummy) AddWorkloadIdentity(ctx context.Context, k8sNs, k8sSa string, cloudSa string) error {
 	panic("unimplemented")
 }
 
 // CheckWorkloadIdentityBinding implements CloudImpl.
-func (d *Dummy) CheckWorkloadIdentityBinding(ctx context.Context, k8sSa string, cloudSa string) error {
+func (d *Dummy) CheckWorkloadIdentity(ctx context.Context, k8sNs, k8sSa string, cloudSa string) error {
 	panic("unimplemented")
 }
 
 // GetIAMBindings implements CloudImpl.
-func (d *Dummy) GetIAMBindings(ctx context.Context, cloudSaID string) ([]string, error) {
+func (d *Dummy) GetPermissions(ctx context.Context, identity *Identity) (*DesiredPermissions, error) {
 	panic("unimplemented")
 }
 
 // SetIAMBindings implements CloudImpl.
-func (d *Dummy) SetIAMBindings(ctx context.Context, cloudSaID string, roles []string) error {
+func (d *Dummy) SetPermissions(ctx context.Context, identity *Identity, permissions *DesiredPermissions) error {
+	panic("unimplemented")
+}
+
+func (d *Dummy) BuildDesiredPermissions(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser, allowedPermissions []string) (*DesiredPermissions, error) {
+	panic("unimplemented")
+}
+
+func (d *Dummy) DeletePermissions(ctx context.Context, identity *Identity) error {
+	panic("unimplemented")
+}
+
+func (d *Dummy) EqualPermissions(ctx context.Context, want, have *DesiredPermissions) bool {
 	panic("unimplemented")
 }
 
 // GetServiceAccount implements CloudImpl.
-func (d *Dummy) GetServiceAccount(ctx context.Context, name string) (*ServiceAccount, error) {
+func (d *Dummy) GetIdentity(ctx context.Context, name string) (*Identity, error) {
 	log := logf.FromContext(ctx).WithValues("name", name)
 	log.Info("Getting a service account")
 	if len(d.GetServiceAccountErr) > 0 {
@@ -45,7 +53,7 @@ func (d *Dummy) GetServiceAccount(ctx context.Context, name string) (*ServiceAcc
 		return nil, err
 	}
 	if len(d.GetServiceAccountResult) > 0 {
-		return &ServiceAccount{
+		return &Identity{
 			Name:       d.GetServiceAccountResult,
 			Identifier: d.GetServiceAccountResult,
 		}, nil
@@ -53,8 +61,12 @@ func (d *Dummy) GetServiceAccount(ctx context.Context, name string) (*ServiceAcc
 	return nil, nil
 }
 
+func (d *Dummy) DeleteIdentity(ctx context.Context, identity *Identity) error {
+	panic("unimplemented")
+}
+
 // CreateServiceAccount implements CloudImpl.
-func (d *Dummy) CreateServiceAccount(ctx context.Context, name string) (*ServiceAccount, error) {
+func (d *Dummy) CreateIdentity(ctx context.Context, name string) (*Identity, error) {
 	log := logf.FromContext(ctx).WithValues("name", name)
 	log.Info("Creating a service account")
 	if len(d.CreateServiceAccountErr) > 0 {
@@ -62,7 +74,7 @@ func (d *Dummy) CreateServiceAccount(ctx context.Context, name string) (*Service
 		log.Error(err, "Couldn't create a service account")
 		return nil, err
 	}
-	return &ServiceAccount{
+	return &Identity{
 		Name:       name,
 		Identifier: "dummy",
 	}, nil
@@ -78,4 +90,16 @@ func NewDummyInstance(configPath string) (CloudImpl, error) {
 		return nil, err
 	}
 	return cloud, nil
+}
+
+func (d *Dummy) GetSAAnnotations(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser) map[string]string {
+	panic("unimplemented")
+}
+
+func (d *Dummy) IsSAReady(ctx context.Context, userCR *gcpkafkav1alpha1.KafkaUser, sa *corev1.ServiceAccount) bool {
+	panic("unimplemented")
+}
+
+func (d *Dummy) CleanupSA(ctx context.Context, sa *corev1.ServiceAccount) {
+	panic("unimplemented")
 }
